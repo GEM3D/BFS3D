@@ -294,7 +294,6 @@ int main( int argcs, char *pArgs[] )
   //set up one velocity component
 
 
-
     rhs = new double[Nx * Ny * Nz];
   //  U.fillTrigonometric(rhs);
   //  U.assignRhs(rhs);

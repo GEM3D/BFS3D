@@ -6262,6 +6262,7 @@ void CFlowVariableSingleBlock::start_exchangeEW(double* north_buf,double* south_
  //    GTIME_BEG(GTIME_EXCHANGE, TIMER_CUDA_SYNC);
 //   }
 
+
    int pid   = myRank;//HCONSTANT_DEVICE;//adapt as fit
    int nproc = p0;//HCONSTANT_GPUCOUNT;//adapt as fit
 
@@ -6270,6 +6271,7 @@ void CFlowVariableSingleBlock::start_exchangeEW(double* north_buf,double* south_
    size_t layer_size_bytes = layer_size * sizeof(double);
 
 
+/*
   for(int chunk=0;chunk<2*nChunk;chunk++)
    {
      exch->send_request[chunk] = MPI_REQUEST_NULL;
@@ -6277,8 +6279,17 @@ void CFlowVariableSingleBlock::start_exchangeEW(double* north_buf,double* south_
      exch->recv_request[chunk] = MPI_REQUEST_NULL;
    //  exch->recv_request[1] = MPI_REQUEST_NULL;
    }
-
+*/
 //   cout<<"nChunk = "<<nChunk<<"???????????? \n";
+
+   MPI_Status recv_stat[2];
+   MPI_Request recv_req[2];
+
+   MPI_Status send_stat[2];
+   MPI_Request send_req[2];
+
+   MPI_Request reqs[4];
+   MPI_Status stats[4];
 
    double* hbufnr = exch->buffer + 0*layer_size;
    double* hbufsr = exch->buffer + 1*layer_size;
@@ -6291,39 +6302,115 @@ void CFlowVariableSingleBlock::start_exchangeEW(double* north_buf,double* south_
    #ifdef DEBUG_STATEMENTS_LEVEL09
    printf("[%d] Start Exch: nlayers = %d layer_size = %d\n", pid, nlayers, layer_size);
    #endif 
+   printf("[%d] Start Exch: nlayers = %d layer_size = %d\n", pid, nlayers, layer_size);
    int proc_row=pid%nproc;
 
+    ofstream fout;
+    
+    int my_rank;
+    MPI_Comm_rank( MPI_COMM_WORLD, &my_rank );
+
+
+    std::string filename = "messages";
+    filename.append( to_string( my_rank ) );
+    fout.open( filename );
+cout<<" ++++++++++++++++++++++++ "<<endl;
+cout<<"comm start "<<endl;
+cout<<" ++++++++++++++++++++++++ "<<endl;
+
+
+       int dest=pid-1;
+   printf(RED "proc_row = %d %d \n"RESET, pid, proc_row);
+int count;
 //   cout<<"start exch: nproc= "<<nproc<<" row number = "<<proc_row<<"layer size= "<<layer_size<<"rank = "<<pid<<" \n";
   for (int chunk=0; chunk<nChunk;chunk++)
   {
+//int chunk=0;
 //    Post receive for data from the north
-   if (proc_row > 0)
-      MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD, exch->recv_request+ 2*chunk+0);
+      //MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD, exch->recv_request+ 2*chunk+0);
+      dest=pid-1; 
+     if(proc_row==0)
+      {
+       dest=MPI_PROC_NULL;
+      }
+      MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, dest, 2*chunk+1, MPI_COMM_WORLD, &(reqs[0]));   
+  //  MPI_Wait(&(recv_req[0]),MPI_STATUS_IGNORE);
+  //    count++; 
+ 
+    //  MPI_Recv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD,&(recv_status[0]));
+      
+      fout<<" rank "<<my_rank<< " recieving from "<<pid-1 <<endl;
+      fout<< hbufnr  <<endl;
+      fout<<" tag   "<<2*chunk+1 <<endl;
+   // Post receive for data from the south
+//   if (proc_row < nproc-1)
+    {
+      dest=pid+1; 
+      if(proc_row==p0-1)
+      {
+       dest=MPI_PROC_NULL;
+      }
+      MPI_Irecv(hbufsr, layer_size, MPI_DOUBLE,dest, 2*chunk+0, MPI_COMM_WORLD,&(reqs[1]));
+//    MPI_Wait(&(recv_req[1]),MPI_STATUS_IGNORE);
+     }    
 
 //    Match the receive: send data south
-   if (proc_row < nproc-1) {
+//   if (proc_row < nproc-1) {
 //      COPY_FROM_GPU(hbufss, data_dev+south_send_offset, layer_size_bytes, "MPI Exch: D2H BufSS");//adapt as fit: copy gpu, single layer only
 
       for(int i=0;i<layer_size;i++) hbufss[i] = south_buf[chunk*nyChunk*nzChunk + i];
+ 
+      dest=pid+1;      
+      if(proc_row==p0-1)
+      {
+       dest=MPI_PROC_NULL;
+      }
+       MPI_Isend(hbufss, layer_size, MPI_DOUBLE, dest, 2*chunk+1, MPI_COMM_WORLD, &(reqs[2]));
+      // MPI_Wait(&(send_req[0]),MPI_STATUS_IGNORE);
+      //MPI_Send(hbufss, layer_size, MPI_DOUBLE, pid+1, 2*chunk+1, MPI_COMM_WORLD);
+//   }
 
-      MPI_Isend(hbufss, layer_size, MPI_DOUBLE, pid+1, 2*chunk+1, MPI_COMM_WORLD, exch->send_request+ 2*chunk+1);
-   }
+#if(1)
 
-   // Post receive for data from the south
-   if (proc_row < nproc-1)
-      MPI_Irecv(hbufsr, layer_size, MPI_DOUBLE, pid+1, 2*chunk+0, MPI_COMM_WORLD, exch->recv_request+ 2*chunk+1);
-
-//    Match the receive: send data north
-   if (proc_row > 0) {
-  //    COPY_FROM_GPU(hbufns, data_dev+north_send_offset, layer_size_bytes, "MPI Exch: D2H BufNS");
+//   Match the receive: send data north
+//   if (proc_row > 0) {
+//   COPY_FROM_GPU(hbufns, data_dev+north_send_offset, layer_size_bytes, "MPI Exch: D2H BufNS");
       
       for(int i=0;i<layer_size;i++) hbufns[i] = north_buf[chunk*nyChunk*nzChunk + i];
 
-      MPI_Isend(hbufns, layer_size, MPI_DOUBLE, pid-1, 2*chunk+0, MPI_COMM_WORLD, exch->send_request+ 2*chunk+0);
-   }
+      dest=pid-1;
+      if(dest < 0)
+      {
+       dest=MPI_PROC_NULL;
+      }
+      MPI_Isend(hbufns, layer_size, MPI_DOUBLE, dest, 2*chunk+0, MPI_COMM_WORLD, &(reqs[3]));
+      //MPI_Wait(&(send_req[1]),MPI_STATUS_IGNORE);
+
+//   }
+//
+      MPI_Waitall(4,reqs,stats);
+/*
+      MPI_Wait(&(recv_req[0]),MPI_STATUS_IGNORE);
+      MPI_Wait(&(recv_req[1]),MPI_STATUS_IGNORE);
+      //MPI_Wait(&(send_req[0]),MPI_STATUS_IGNORE);
+      MPI_Wait(&(send_req[1]),MPI_STATUS_IGNORE);
+*/
+#endif 
+
+//   count=0;
+
  }
+
+fout.close();
+cout<<" ++++++++++++++++++++++++ "<<endl;
+cout<<"comm over "<<my_rank<<endl;
+cout<<" ++++++++++++++++++++++++ "<<endl;
+
+
 //   GTIME_END(GTIME_EXCHANGE, TIMER_CUDA_NOSYNC);
 }
+
+
 
 void CFlowVariableSingleBlock:: finish_exchangeEW(double* north_buf,double* south_buf,
    unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags)
@@ -6344,6 +6431,7 @@ void CFlowVariableSingleBlock:: finish_exchangeEW(double* north_buf,double* sout
    printf("[%d] Finish Exch: nlayers = %d layer_size = %d\n", pid, nlayers, layer_size);
    #endif // DEBUG_STATEMENTS_LEVEL09
 
+#if(0)
 //   GTIME_BEG(GTIME_EXCHANGE, TIMER_CUDA_NOSYNC);
    int proc_row=pid%nproc;
  //  cout<<"finish exch: nproc= "<<nproc<<" row number = "<<proc_row<<"layer size="<<layer_size<<" rank = "<<pid<<" \n";
@@ -6370,6 +6458,7 @@ void CFlowVariableSingleBlock:: finish_exchangeEW(double* north_buf,double* sout
   }
 //   }
   // GTIME_END(GTIME_EXCHANGE, TIMER_CUDA_NOSYNC);
+  #endif
 }
 
 
@@ -6378,10 +6467,110 @@ void CFlowVariableSingleBlock::exchange_scalarEW(double* north_buf, double* sout
 {
    // Optimize away single GPU case.
 //   if (HCONSTANT_GPUCOUNT == 1)return;
-
+/*
    start_exchangeEW(north_buf, south_buf,layer_size, nlayers, exch, flags);
    finish_exchangeEW(north_buf, south_buf,layer_size, nlayers, exch, flags);
+*/
+
+ int my_rank,comsize;
+
+ MPI_Comm_size( MPI_COMM_WORLD, &comsize );
+ MPI_Comm_rank( MPI_COMM_WORLD, &my_rank );
+
+ cart_communicate  C(nxChunk,nyChunk,my_rank,comsize); 
+
+ constructNbrs(C);
+
+ swapGhosts(C);
+
+
 }
+#if(1)
+void CFlowVariableSingleBlock::swapGhosts(cart_communicate &C)
+{
+   // Optimize away single GPU case.
+//   if (HCONSTANT_GPUCOUNT == 1)return;
+
+
+  int indixes[2] = { 1, -1 };
+  int source = 0;
+  int dest = 0;
+  int direction = 1;
+  int disp = -1;
+
+  MPI_Status status[8];
+  MPI_Request req[8];
+
+  int size=nxChunk*nx;
+
+  double *recv[4];
+  double *send[2];
+
+for(int i=0;i<4;i++)
+{
+  recv[i]=new double[nxChunk*nyChunk];
+  send[i]=new double[nxChunk*nyChunk];
+}
+// Southe and North
+// just posted the recieves first to improve performance
+
+ int n= nxChunk*nyChunk;
+
+for(int chunk=0; chunk<nChunk;chunk++)
+{
+  MPI_Irecv(recv[0], n, MPI_DOUBLE, src[0], 0, MPI_COMM_WORLD, &req[0]);
+  MPI_Irecv(recv[1], n, MPI_DOUBLE, src[1], 0, MPI_COMM_WORLD, &req[2]);
+  MPI_Irecv(recv[2], n, MPI_DOUBLE, src[2], 0, MPI_COMM_WORLD, &req[5]);
+  MPI_Irecv(recv[3], n, MPI_DOUBLE, src[3], 0, MPI_COMM_WORLD, &req[7]);
+
+
+  MPI_Isend(send[0], n, MPI_DOUBLE,  dst[0], 0, MPI_COMM_WORLD, &req[1]);
+  MPI_Isend(send[1], n, MPI_DOUBLE,  dst[1], 0, MPI_COMM_WORLD, &req[3]);
+  MPI_Isend(send[2], n, MPI_DOUBLE, dst[2], 0, MPI_COMM_WORLD, &req[4]);
+  MPI_Isend(send[3], n, MPI_DOUBLE, dst[3], 0, MPI_COMM_WORLD, &req[6]);
+
+  MPI_Waitall(8,req,status);
+
+}
+
+
+}
+
+#endif
+
+void CFlowVariableSingleBlock::constructNbrs(cart_communicate &C) {
+  int source = 0;
+  int dest = 0;
+  int direction = 1;
+  int disp = -1;
+
+  C.shift(direction, disp, &source, &dest);
+  dst[0]=dest;  
+  src[0]=source;  
+
+  disp = +1;
+  C.shift(direction, disp, &source, &dest);
+
+  dst[1]=dest;  
+  src[1]=source;  
+
+  disp = 1;
+  direction = 0;
+  C.shift(direction, disp, &source, &dest);
+
+  dst[2]=dest;  
+  src[2]=source;  
+
+  disp = -1;
+  C.shift(direction, disp, &source, &dest);
+
+  dst[3]=dest;  
+  src[3]=source;  
+
+}
+
+
+
 
 void CFlowVariableSingleBlock::updateGhostsEW()
 {
@@ -6403,8 +6592,10 @@ void CFlowVariableSingleBlock::updateGhostsEW()
                 EastGhosts[chunk*nzChunk*nyChunk + nyChunk * k + j] = P(chunk,0,i_e,j,k,0);
                 WestGhosts[chunk*nzChunk*nyChunk + nyChunk * k + j] = P(chunk,0,i_w,j,k,0);
                int index = j+nyChunk*k+chunk*nzChunk*nyChunk;
+#if(0)
              if( fabs(WestGhosts[index]-EastGhosts[index])>1.0e-3 ) 
               cout<<"before exchange, inequal ghosts:  rank= "<<myRank<<" chunk = "<<chunk<<", j= "<<j<<", k = "<<k<<":West Ghost= "<<WestGhosts[index]<<" EastGhost= "<<EastGhosts[index]<<" \n";
+#endif
           //   if(myRank%p0 >0)
           //    cout<<"before exchange: right rank= "<<myRank<<" chunk = "<<chunk<<", j= "<<j<<", "<<k<<":West Ghost= "<<WestGhosts[index]<<" EastGhost= "<<EastGhosts[index]<<" \n";
             }
@@ -6420,7 +6611,7 @@ for(int chunk=0;chunk<nChunk;chunk++)
   for ( int k = 0; k < nzChunk; k++ )
     {
            
-        
+       #if(0) 
             for ( int j = 0; j < nyChunk; j++ )
             {
                int index=j+nyChunk*k+chunk*nzChunk*nyChunk;
@@ -6429,7 +6620,7 @@ for(int chunk=0;chunk<nChunk;chunk++)
             // if(myRank%p0 >0)
              // cout<<"after exchange: right rank= "<<myRank<<" chunk = "<<chunk<<" j= "<<j<<", "<<k<<":West Ghost= "<<WestGhosts[index]<<" EastGhost= "<<EastGhosts[index]<<" \n";
             }                                        
-
+       #endif
             }
 }
       

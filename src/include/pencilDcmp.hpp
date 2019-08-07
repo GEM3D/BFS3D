@@ -14,6 +14,7 @@
 #include "multiGrid.hpp"
 #include "signalProc.hpp"
 #include "triDiag.hpp"
+#include "cart_communicate.hpp"
 
 //#define restrict __restrict__
 
@@ -584,6 +585,7 @@ class CFlowVariable : public PencilDcmp
       
 
        
+         
        double *WestBoundary;
        double *EastBoundary;
        double *NorthBoundary;
@@ -658,7 +660,10 @@ class CFlowVariable : public PencilDcmp
 
 class CFlowVariableSingleBlock : public CFlowVariable
 {
-
+    //private:
+    //cart_communicate C;
+    int src[4];
+    int dst[4];
     public:
     CFlowVariableSingleBlock operator+(const CFlowVariableSingleBlock& b);
     typedef struct mpi_exchange_s
@@ -671,16 +676,18 @@ class CFlowVariableSingleBlock : public CFlowVariable
          void updateGhostsEW();
          CFlowVariableSingleBlock( int nx, int ny, int nz, int p0 ) : CFlowVariable( nx, ny, nz, p0 ){};
          CFlowVariableSingleBlock( int nx, int ny, int nz, int p0, double *Xb ) : CFlowVariable( nx, ny, nz, p0, Xb ){};
-    void start_exchangeNS(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
+   void start_exchangeNS(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
 
    void  finish_exchangeNS(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
    void exchange_scalarNS(double* north_buf, double* south_buf, unsigned long layer_size, unsigned long nlayers,
-         mpi_exchange* exch, int flags);
-    void start_exchangeEW(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
-
+   mpi_exchange* exch, int flags);
+   void start_exchangeEW(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
    void  finish_exchangeEW(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
    void exchange_scalarEW(double* north_buf, double* south_buf, unsigned long layer_size, unsigned long nlayers,
          mpi_exchange* exch, int flags);
+
+  void constructNbrs(cart_communicate &C); 
+  void swapGhosts(cart_communicate &C);
 
 
 //         virtual  ~CFlowVariable(); 
