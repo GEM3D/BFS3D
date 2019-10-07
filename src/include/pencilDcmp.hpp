@@ -14,7 +14,6 @@
 #include "multiGrid.hpp"
 #include "signalProc.hpp"
 #include "triDiag.hpp"
-#include "cart_communicate.hpp"
 
 //#define restrict __restrict__
 
@@ -81,6 +80,7 @@ class PencilDcmp
     double scale; /*!< store the scaling factor for the two inverse transformations depending on the boundary conditons */
     sint * faceTag = NULL;
 
+    double mean;
     double finalErr;
     double *__restrict__ num   = NULL;
     double *__restrict__ denum = NULL;
@@ -511,7 +511,7 @@ class PencilDcmp
     void fillTrigonometric( double *rhs );
 
     void print();
-
+    void subtractMeanValue( );
     ~PencilDcmp(); /*!< Class destructor*/
 };
 
@@ -585,7 +585,6 @@ class CFlowVariable : public PencilDcmp
       
 
        
-         
        double *WestBoundary;
        double *EastBoundary;
        double *NorthBoundary;
@@ -595,6 +594,10 @@ class CFlowVariable : public PencilDcmp
        CFlowVariable *GradX;    
        CFlowVariable *GradY;   
        CFlowVariable *GradZ;
+
+       CFlowVariable *Grad2X;    
+       CFlowVariable *Grad2Y;   
+       CFlowVariable *Grad2Z;
        CFlowVariable *Laplacian;
     public:
     //   CFlowVariable operator+(const CFlowVariable& b);
@@ -615,18 +618,22 @@ class CFlowVariable : public PencilDcmp
     {initializeField(); NorthGhosts = new double[nz*nx];  SouthGhosts = new double[nz*nx]; 
      EastGhosts = new double[nz*ny];  WestGhosts = new double[nz*ny]; TopGhosts= new double[nx*ny]; BottomGhosts= new double[nx*ny]; 
      EastBoundary = new double[nz*ny];  WestBoundary = new double[nz*ny];NorthBoundary = new double[nz*nx];  SouthBoundary = new double[nz*nx];  
-     GradX=NULL; GradY=NULL;GradZ=NULL; Laplacian=NULL;};
+     GradX=NULL; GradY=NULL;GradZ=NULL;  Grad2X=NULL; Grad2Y=NULL;Grad2Z=NULL; Laplacian=NULL;};
          
        CFlowVariable( int nx, int ny, int nz, int p0, double *Xb ) : PencilDcmp( nx, ny, nz, p0,p0 )//constructor creating grid and coordinates
        {initializeField(); NorthGhosts = new double[nz*nx/p0];  SouthGhosts = new double[nz*nx/p0]; 
        EastGhosts = new double[nz*ny/p0];  WestGhosts = new double[nz*ny/p0]; TopGhosts= new double[nx*ny]; BottomGhosts= new double[nx*ny]; 
        EastBoundary = new double[nz*ny];  WestBoundary = new double[nz*ny];NorthBoundary = new double[nz*nx];  SouthBoundary = new double[nz*nx];  
-       GradX=NULL; GradY=NULL;GradZ=NULL; Laplacian=NULL;
+       GradX=NULL; GradY=NULL;GradZ=NULL;    Grad2X=NULL; Grad2Y=NULL;Grad2Z=NULL;Laplacian=NULL;
        setBox(Xb);
        int dir =2; 
        setCoords(dir);    };
+      
+       void freeVariables(){delete NorthGhosts; delete WestGhosts; delete SouthGhosts; delete EastGhosts; delete TopGhosts; delete BottomGhosts;
+                                  delete EastBoundary; delete WestBoundary; delete NorthBoundary; delete SouthBoundary;  };
 
 
+         void RefreshGradient();
          CFlowVariable(PencilDcmp *Field );
           
         // CFlowVariable* getField(){return P;};
@@ -634,7 +641,9 @@ class CFlowVariable : public PencilDcmp
          CFlowVariable& getGradY(){return *GradY;};
          CFlowVariable& getGradZ(){return *GradZ;};
          CFlowVariable& getLaplacian(){return *Laplacian;};
-
+         void computedX2();
+         void computedY2();
+         void computedZ2();
          void computeGradX();
          void computeGradY();
          void computeGradZ();
@@ -646,7 +655,7 @@ class CFlowVariable : public PencilDcmp
          virtual void updateGhostsEW()=0;
           void setGradXEastBoundary();
          void setGradXWestBoundary();
-
+         virtual void updateGhosts()=0;
          void setGradYSouthBoundary();
          void setGradYNorthBoundary(); 
 
@@ -655,15 +664,12 @@ class CFlowVariable : public PencilDcmp
          
          void updateGhostBoundariesEW(); 
          void updateGhostBoundariesNS();
-         void updateGhostBoundaryBT();
+         void updateGhostBoundariesBT();
 };
 
 class CFlowVariableSingleBlock : public CFlowVariable
 {
-    //private:
-    //cart_communicate C;
-    int src[4];
-    int dst[4];
+
     public:
     CFlowVariableSingleBlock operator+(const CFlowVariableSingleBlock& b);
     typedef struct mpi_exchange_s
@@ -674,23 +680,23 @@ class CFlowVariableSingleBlock : public CFlowVariable
     } mpi_exchange;
          void updateGhostsNS();
          void updateGhostsEW();
+         void updateGhosts();
+ 
          CFlowVariableSingleBlock( int nx, int ny, int nz, int p0 ) : CFlowVariable( nx, ny, nz, p0 ){};
          CFlowVariableSingleBlock( int nx, int ny, int nz, int p0, double *Xb ) : CFlowVariable( nx, ny, nz, p0, Xb ){};
-   void start_exchangeNS(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
+    void start_exchangeNS(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
 
    void  finish_exchangeNS(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
    void exchange_scalarNS(double* north_buf, double* south_buf, unsigned long layer_size, unsigned long nlayers,
-   mpi_exchange* exch, int flags);
-   void start_exchangeEW(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
+         mpi_exchange* exch, int flags);
+    void start_exchangeEW(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
+
    void  finish_exchangeEW(double* north_buf, double* south_buf,unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags);
    void exchange_scalarEW(double* north_buf, double* south_buf, unsigned long layer_size, unsigned long nlayers,
          mpi_exchange* exch, int flags);
 
-  void constructNbrs(cart_communicate &C); 
-  void swapGhosts(cart_communicate &C);
 
-
-//         virtual  ~CFlowVariable(); 
+    ~CFlowVariableSingleBlock(){}; 
 
 };
 
@@ -727,7 +733,7 @@ class CVelocitySingleBlock
          CFlowVariable& getDivergence(){return *Divergence;}; 
           
 
-          
+         void Refresh();         
          void computeDivergence();
 
 };
@@ -756,9 +762,12 @@ class CProjectionMomentumSingleBlock
    public:
    CFlowVariableSingleBlock* Pressure; 
    CFlowVariableSingleBlock *Massflow;
+   CVelocitySingleBlock* Vel_old;
    CVelocitySingleBlock* Veln;
-   CVelocitySingleBlock* Vel_predict; 
+   CVelocitySingleBlock* Vel_predict;
+   CVelocitySingleBlock* Vel_predict_old; 
    void initialize();
+   void updateNextTimestep();
    void solve(int N);
    CProjectionMomentumSingleBlock(double dt, int X,int Y, int Z, int np, double nu,double *Xb,char *bc);
    CVelocitySingleBlock& getVelocity(){return *Veln; };
@@ -771,7 +780,7 @@ class CProjectionMomentumSingleBlock
    void correctVelocity();
    void evaluateConvection();
    void evaluateDiffusion();
-   CFlowVariableSingleBlock& convectionTerm(CVelocitySingleBlock &cvel, CFlowVariableSingleBlock &sc);
+   CFlowVariableSingleBlock* convectionTerm(CVelocitySingleBlock &cvel, CFlowVariableSingleBlock &sc);
    CFlowVariableSingleBlock& getUConvection(){return *UConvection;}; 
 
 };
