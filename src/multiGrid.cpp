@@ -28,7 +28,7 @@ MultiGrid::MultiGrid( int n, double Delx, char *sm, int iter1, int iter2, int it
     getRequiredSize();
 
     setSmoother( sm );
-    printf( "max=%d size=%d smoother=%d N=%d\n", maxLevel, arraySize, selectSmoother, N );
+//    printf( "max=%d size=%d smoother=%d N=%d\n", maxLevel, arraySize, selectSmoother, N );
     // allocate
     // allocate on the device
 
@@ -79,7 +79,7 @@ void MultiGrid::construct( int n, int iter1, int iter2, int iter3, double *sub, 
     getRequiredSize();
 
     setSmoother( sm );
-    printf( "max=%d size=%d smoother=%d N=%d\n", maxLevel, arraySize, selectSmoother, N );
+//    printf( "max=%d size=%d smoother=%d N=%d\n", maxLevel, arraySize, selectSmoother, N );
     // allocate
     // allocate on the device
 
@@ -163,7 +163,7 @@ MultiGrid::MultiGrid( int n, double Delx, int iter1, int iter2, int iter3 )
     char sm[100] = "RB";
 
     setSmoother( sm );
-    printf( "maxxLevel =%d size=%d smoother=%d N=%d\n", maxLevel, arraySize, selectSmoother, N );
+//    printf( "maxxLevel =%d size=%d smoother=%d N=%d\n", maxLevel, arraySize, selectSmoother, N );
     // allocate
     // allocate on the device
 
@@ -248,7 +248,7 @@ void MultiGrid::fillIndices()
     {
         indices[i] = getIndex( i );
         // prin
-        printf( "index[%d] = %d \n", i, indices[i] );
+  //      printf( "index[%d] = %d \n", i, indices[i] );
     }
     //#pragma acc update device( indices [0:maxLevel] )
 }
@@ -267,7 +267,7 @@ void MultiGrid::setSmoother( char *sm )
         selectSmoother = 1;
     }
 
-    printf( "smoother set as %s %d\n", sm, selectSmoother );
+//    printf( "smoother set as %s %d\n", sm, selectSmoother );
 }
 
 void MultiGrid::initialize( double *uIn )
@@ -315,7 +315,7 @@ void MultiGrid::getRequiredSize()
         size += ( ( 1 << ( i + 1 ) ) + 1 );
     }
     arraySize = size;
-    printf( "maxlevel =%d the required size %d  \n ", maxLevel, size );
+ //   printf( "maxlevel =%d the required size %d  \n ", maxLevel, size );
 }
 #else
 
@@ -328,7 +328,7 @@ void MultiGrid::getRequiredSize()
         size += ( ( 1 << i + 1 ) - 1 );
     }
     arraySize = size;
-    printf( "maxlevel =%d the required size %d  \n ", maxLevel, size );
+//    printf( "maxlevel =%d the required size %d  \n ", maxLevel, size );
 }
 
 #endif
@@ -1813,10 +1813,10 @@ void MultiGrid::suggestSize( int a )
         }
     }
 
-    cout << RED << " Suggestion " << a << " is divisible by: " << endl;
+//    cout << RED << " Suggestion " << a << " is divisible by: " << endl;
     for ( int i = 0; i < count; i++ )
     {
-        cout << GREEN << q[i] << RESET << endl;
+//        cout << GREEN << q[i] << RESET << endl;
     }
 
     delete[] q;

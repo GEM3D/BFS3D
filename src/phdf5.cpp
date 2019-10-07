@@ -1,9 +1,9 @@
 #include "phdf5.hpp"
 #include "definitions.h"
 //#include "stdio.h"
-#define H5FILE_NAME "soln/Pxdmf3d%u.h5"
-#define XDMF_NAME "soln/Pxdmf3d%u.xmf"
-#define H5FILE "Pxdmf3d%u.h5"
+#define H5FILE_NAME "soln/Pxdmf3d_%u.h5"
+#define XDMF_NAME "soln/Pxdmf3d_%u.xmf"
+#define H5FILE "Pxdmf3d_%u.h5"
 #define DEBUG 0
 
 void Phdf5::writeMultiBlock( ChunkedArray &F, uint appx )
