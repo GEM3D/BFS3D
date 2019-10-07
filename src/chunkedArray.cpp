@@ -87,7 +87,7 @@ PittPackResult ChunkedArray::allocate( int *n, int nbl )
         exit( 1 );
     }
 
-    cout << " allocated P with size " << arraySize << endl;
+//    cout << " allocated P with size " << arraySize << endl;
 
     for ( int i = 0; i < arraySize; i++ )
     {
@@ -141,7 +141,7 @@ void ChunkedArray::setDirection( int dir )
 #if ( PITTPACKACC )
 #pragma acc update device( nx, ny, nz )
 #endif
-    cout << "each chunk dims=" << nx << " " << ny << " " << nz << endl;
+ //   cout << "each chunk dims=" << nx << " " << ny << " " << nz << endl;
 }
 
 #if ( PITTPACKACC )

@@ -92,10 +92,6 @@ void PoissonCPU::performTransformYdir()
     fftw_complex *out;
     out = (fftw_complex *)malloc( nChunk * nyChunk * sizeof( fftw_complex ) );
 
-  //      readYLine( 0, in );
-
-    //    pl = fftw_plan_dft_1d( nyChunk * nChunk, in, out, FFTW_FORWARD, FFTW_ESTIMATE );
-
     for ( int j = 0; j < nxChunk * nzChunk; j++ )
     {
         readYLine( j, in );
@@ -104,14 +100,11 @@ void PoissonCPU::performTransformYdir()
 
         fftw_execute( pl );
         writeYLine( j, out );
-  fftw_destroy_plan(pl);
     }
 
     fftw_free( out );
     fftw_free( in );
-  //  free( out );
-  //  free( in );
-//    fftw_destroy_plan(pl);
+    fftw_destroy_plan(pl);
     fftw_cleanup();
 
 }
@@ -133,12 +126,11 @@ void PoissonCPU::performInverseTransformYdir()
 
         fftw_execute( pl );
         writeYLine( j, out );
-    fftw_destroy_plan(pl);
     }
 
     fftw_free( out );
     fftw_free( in );
-//    fftw_destroy_plan(pl);
+    fftw_destroy_plan(pl);
     fftw_cleanup();
 
 
@@ -226,12 +218,11 @@ void PoissonCPU::performInverseTransformXdir()
 
         fftw_execute( pl );
         writeXLine( j, out );
-    fftw_destroy_plan(pl);
     }
 
     fftw_free( out );
     fftw_free( in );
-//    fftw_destroy_plan(pl);
+    fftw_destroy_plan(pl);
     fftw_cleanup();
 
 
@@ -279,14 +270,13 @@ void PoissonCPU::performTransformXdir()
         fftw_execute( pl );
 
         writeXLine( j, out );
-    fftw_destroy_plan(pl);
     }
 
     //
     // cout<<RED<<nChunk << " "<<nxChunk<<RESET<<endl;
     fftw_free( out );
     fftw_free( in );
-//    fftw_destroy_plan(pl);
+    fftw_destroy_plan(pl);
     fftw_cleanup();
 
 
@@ -456,7 +446,7 @@ void PoissonCPU::pittPack()
 // step 8) perform  FFT transform can be performed
 #endif
 
-       performTransformYdir();
+        performTransformYdir();
         // M.printX( myfile );
 
 #if ( DEBUG0 )
@@ -593,7 +583,7 @@ void PoissonCPU::pittPack()
 
 #endif
 
-       performInverseTransformYdir();
+        performInverseTransformYdir();
 #if ( DEBUG0 )
         myfile << "     perform IFFTY" << endl;
         printY( myfile );

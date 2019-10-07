@@ -56,6 +56,9 @@ int main( int argcs, char *pArgs[] )
     int NXCHUNK = atoi( pArgs[1] );
     int NYCHUNK = atoi( pArgs[2] );
     int NZCHUNK = atoi( pArgs[3] );
+    int NSTEPS =  atoi( pArgs[4] );
+    double TIMESTEP =  atof( pArgs[5] );  
+    double VISCOSITY =  atof( pArgs[6] );  
 
     if ( MPI_Init( &argcs, &pArgs ) != MPI_SUCCESS )
     {
@@ -247,6 +250,7 @@ int main( int argcs, char *pArgs[] )
         //        M.initializeTrigonometric();
         if ( INITANALYTIC == 0 )
         {
+            cout<<"   Assigning trigonometric RHS ....\n"<<endl<<endl;
             double *rhs = new double[Nx * Ny * Nz];
             M->fillTrigonometric( rhs );
             /*
@@ -258,24 +262,30 @@ int main( int argcs, char *pArgs[] )
             M->assignRhs( rhs );
         }
         // M.print();
-        M->pittPack();
+ //       M->pittPack();
         //  delete [] rhs;
     }
 
     cout << "GPU solving" << endl;
 #else
     // M.solver();
-
-    if ( INITANALYTIC == 0 )
-    {
-        double *rhs = new double[Nx * Ny * Nz];
-        cout<<"filling RHS of M\n";
-      //  M.fillTrigonometric( rhs );
-      //  M.assignRhs( rhs );
-    }
+/*    rhs = new double[Nx * Ny * Nz];
+    M->setCoords( dir );
+    for(int i=0;i<NSTEPS;i++)
+   {
+     
     // M.print();
-  //  M.pittPack();
-    //  delete [] rhs;
+
+      if ( INITANALYTIC == 0 )
+      {
+    
+        cout<<"filling RHS of M\n";
+        M->fillTrigonometric( rhs );
+        M->assignRhs( rhs );
+      }
+      M->pittPack();
+    }
+      delete [] rhs;*/
 #endif
 
 #endif
@@ -289,32 +299,33 @@ int main( int argcs, char *pArgs[] )
 #endif
 
 #if ( 1 )
-    cout << " for writing out" << endl;
-    M->setCoords( dir );
+  //  cout << " for writing out" << endl;
+  //  M->setCoords( dir );
   //set up one velocity component
 
 
-    rhs = new double[Nx * Ny * Nz];
-  //  U.fillTrigonometric(rhs);
-  //  U.assignRhs(rhs);
+
+//    rhs = new double[Nx * Ny * Nz];
+  //  M->fillTrigonometric(rhs);
+  //  M->assignRhs(rhs);
 
 //setup velocity vector
-   CVelocitySingleBlock Vel(Nx,Ny,Nz,p0,X);
+//   CVelocitySingleBlock Vel(Nx,Ny,Nz,p0,X);
 //    Vel.setVelocity(U,U,U);
-   Vel.initializeVelocity(); 
-   Vel.computeDivergence(); 
+//   Vel.initializeVelocity(); 
+//   Vel.computeDivergence(); 
 //   Vel.scaleDivergence(0.3); 
-   CProjectionMomentumSingleBlock pr(0.1, Nx, Ny, Nz, p0,0.01,X,mybc);  
+   CProjectionMomentumSingleBlock pr(TIMESTEP, Nx, Ny, Nz, p0,VISCOSITY,X,mybc);  
    pr.initialize();    
  
-    CFlowVariableSingleBlock &U = Vel.getV();
-    U.setBox(X);
-    U.setCoords(dir);
+//    CFlowVariableSingleBlock &U = Vel.getV();
+//    U.setBox(X);
+//    U.setCoords(dir);
 //    U.computeGradY();
 //    U.getGradY().computeGradY();
-    U.computeLaplacian();
+//    U.computeLaplacian();
 //    M->setRHS(Vel.getDivergence());
-    M->pittPack();
+  //  M->pittPack();
 //    U.computeGradZ();
 
 //    CFlowVariableSingleBlock Result =U+U ;
@@ -329,24 +340,44 @@ int main( int argcs, char *pArgs[] )
         //  M.changeOwnershipPairwiseExchangeXY();
         
 //cout<<"about to output hdf5\n";
-//       M.IO( 1, dir, 0 );
+     //  M->IO( 1, dir, 0 );
 //       Vel.getDivergence().IO( 1, dir, 0 );
-//     CProjectionMomentumSingleBlock::convectionTerm(Vel,Vel.getU()).IO(1,dir,0);    
-      //  pr.predictVelocity();
-       // pr.projection();
+   
+       
+  //      pr.predictVelocity();
+     //   pr.projection();
+     pr.solve(NSTEPS);
      //   pr.correction();
       //  pr.predictVelocity();
       //  pr.projection();
      //   pr.correction();
      //   pr.Vel_predict->getDivergence().scaleField(-1.0);
-      //  pr.Pressure->computeLaplacian();
+    
      //   pr.Vel_predict->getDivergence().add(pr.Pressure->getLaplacian());
-      //  pr.convectionTerm(*(pr.Vel_predict),pr.Vel_predict->getU()); 
+ //       pr.convectionTerm(*(pr.Vel_predict),pr.Vel_predict->getU()); 
    //     pr.Vel_predict->computeDivergence();  
-       // pr.Pressure->computeLaplacian();
-        pr.Veln->getV().computeGradX();
-        pr.Veln->getV().getGradX().IO(1,dir,0);
-     
+       //   pr.Pressure->computeLaplacian();
+       //   pr.Vel_predict->computeDivergence();
+       //   pr.Vel_predict->getDivergence().scaleField(-1.0/128.0);
+       //   pr.Massflow->add(pr.Vel_predict->getDivergence());
+  //        pr.Vel_predict->getDivergence().scaleField(-1);
+//         pr.Pressure->getLaplacian().add(pr.Vel_predict->getDivergence());   
+  //        pr.Veln->getW().computeGradX();  
+
+   
+//       pr.Vel_predict->getV().computeGradY();
+//      pr.Pressure->computeLaplacian();
+    
+       
+     //     pr.Veln->getV().computeGradY();
+       //   pr.Vel_predict->getDivergence().IO(1,dir,0);
+       //   pr.Pressure->getGradY().computeGradY();
+       //   pr.Veln->computeDivergence();
+      
+         pr.Veln->getU().IO(1,dir,0);
+       //   pr.Pressure->IO(1,dir,0);      
+       //    pr.Pressure->IO(1,dir,0);  
+     //      pr.Massflow->IO(1,dir,0);     
     }
 
 //   M.eigenVal( myfile );

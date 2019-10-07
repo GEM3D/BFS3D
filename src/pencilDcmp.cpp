@@ -586,7 +586,7 @@ PencilDcmp::~PencilDcmp()
 
     MPI_Comm_free( &Comm );
 
-    if ( MPI_Finalized( &initFlag ) != MPI_SUCCESS )
+   /* if ( MPI_Finalized( &initFlag ) != MPI_SUCCESS )
     {
         cout << "failure in checking if MPI has already initialize" << endl;
         exit( 1 );
@@ -600,7 +600,7 @@ PencilDcmp::~PencilDcmp()
             cout << " Exit Code : " << PittPackGetErrorEnum( MPI_FINALIZE_FAIL ) << endl;
             exit( 1 );
         }
-    }
+    }*/
     delete[] send_request;
     delete[] send_status;
 
@@ -2735,7 +2735,7 @@ void PencilDcmp::constructShuffleVectorX()
         */
     }
 
-    cout << "totalSize= " << totalSize << endl;
+//    cout << "totalSize= " << totalSize << endl;
 
     setUpShuffleArraysX( a );
 
@@ -2755,7 +2755,7 @@ void PencilDcmp::setUpShuffleArraysX( vector<shuffle0> &a )
 
     sint finalsize = count + a.size();
 #if ( 1 )
-    cout << "FinalSize= " << finalsize << endl;
+//    cout << "FinalSize= " << finalsize << endl;
 #endif
     jax = new sint[finalsize];
 
@@ -2931,7 +2931,7 @@ void PencilDcmp::constructShuffleVectorY()
     }
 
 #if ( DEBUG )
-    cout << "totalSize= " << totalSize << endl;
+//    cout << "totalSize= " << totalSize << endl;
 #endif
     setUpShuffleArraysY( a );
 
@@ -4898,7 +4898,7 @@ void PencilDcmp::runInfo()
 
     //    double meshSize = nChunk * nChunk * nChunk * nxChunk * nyChunk * nzChunk;
 
-    if ( myRank == 0 )
+    if ( myRank == 10000 ) //cheng
     {
         ofstream    PittOut;
         std::string filename = "PittPack_";
@@ -4999,6 +4999,7 @@ void PencilDcmp::runInfo()
              << ", time = " << runTime << " (s) " << endl;
     }
 }
+
 
 // clear the tem x3 vector in agang rather than in the thread inside sheramn morrison
 #if ( PITTPACKACC )
@@ -5606,6 +5607,43 @@ void PencilDcmp::assignRhs( double *rhs )
     
 }
 
+
+void PencilDcmp::subtractMeanValue()
+{
+    int    Nx  = nxChunk;
+    int    Ny  = nyChunk;
+    int    Nz  = nz;
+    double sum = 0.0;
+    for ( int k = 0; k < Nz; k++ )
+    {
+        for ( int j = 0; j < Ny; j++ )
+        {
+            for ( int i = 0; i < Nx; i++ )
+            {
+                sum = sum + P( i, j, k, 0 );
+            }
+        }
+    }
+    mean = 0.0;
+
+    MPI_Allreduce( &sum, &mean, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+
+    mean = mean / nxChunk / nyChunk / nzChunk / nChunk / nChunk / nChunk;
+
+    cout << "mean value " << mean << endl;
+
+    for ( int k = 0; k < Nz; k++ )
+    {
+        for ( int j = 0; j < Ny; j++ )
+        {
+            for ( int i = 0; i < Nx; i++ )
+            {
+                P( i, j, k, 0 ) -= mean;
+            }
+        }
+    }
+}
+
 void PencilDcmp::fillTrigonometric( double *rhs )
 {
     double pi = 4. * arctan( 1.0 );
@@ -5669,7 +5707,7 @@ void PencilDcmp::fillTrigonometric( double *rhs )
                     x = Xa + i * c1 + shift * c1 * .5;
                 }
 
-                rhs[i + j * Nx + Nx * Ny * k] = x+y+z + 0*4*pi*pi*sin(2*pi*x); /* ( ( omega[0] * omega[0] ) * exactValue( omega[0] * x, tags[0] )
+                rhs[i + j * Nx + Nx * Ny * k] = 4*pi*pi*sin(2*pi*x); /* ( ( omega[0] * omega[0] ) * exactValue( omega[0] * x, tags[0] )
                                                    * exactValue( omega[1] * y, tags[1] ) * exactValue( omega[2] * z, tags[2] )
                                                    + ( omega[1] * omega[1] ) * exactValue( omega[0] * x, tags[0] )
                                                      * exactValue( omega[1] * y, tags[1] ) * exactValue( omega[2] * z, tags[2] )
@@ -5945,9 +5983,77 @@ void CFlowVariable::computeGradX()
 
 }
 
+void CFlowVariable::computedX2()
+{
+    
+    if(Grad2X==NULL)
+    {
+      Grad2X=new CFlowVariableSingleBlock(nxChunk*p0,nyChunk*p0,nzChunk*p0,p0);
+      Grad2X->setBox(this->Xbox);
+//    cout<<"Xbox elements ="<<GradX->Xbox[0]<<" "<<GradX->Xbox[1]<<" "<<GradX->Xbox[2]<<" "<<GradX->Xbox[3]<<" "<<GradX->Xbox[4]<<"\n"; 
+       int dir=2;
+       Grad2X->setCoords(dir);
+    }
+    int rank_x = myRank%p0;
+    double c1=Grad2X->dxyz[0]; 
+    updateGhostsEW();
+
+//    cout<<"nChunk, x,y,k,dx="<<nChunk<<" "<<nxChunk<<" "<<nyChunk<<" "<<nzChunk<<" "<<GradX->dxyz[0]<<"\n"; 
+    for ( int id = 0; id < nChunk; id++ )
+    {
+#if ( PITTPACKACC )
+#pragma acc loop gang private( tmp[2 * nxChunk * nyChunk] )
+#endif
+        for ( int k = 0; k < nzChunk; k++ )
+        {
+//            assignTempX2Y( id, k, tmp );
+#if ( PITTPACKACC )
+#pragma acc loop worker
+#endif
+            for ( int j = 0; j < nyChunk; j++ )
+            {
+#if ( PITTPACKACC )
+#pragma acc loop vector
+#endif
+                for ( int i = 1; i < nxChunk-1; i++ )//interior points
+                {
+                   Grad2X->P(id,0,i,j,k,0) =(P(id,0,i+1,j,k,0)-2*P(id,0,i,j,k,0)+P(id,0,i-1,j,k,0) )/(c1*c1) ;
+                   Grad2X->P(id,0,i,j,k,1) = 0 ;                 
+                }
+
+             //   if(rank_x!=p0-1) //right side processor interface not on the rightmost processor  
+             //   {
+                  Grad2X->P(id,0,nxChunk-1,j,k,0) = (EastGhosts[j + nyChunk * k+ id*nyChunk*nzChunk]-2*P(id,0,nxChunk-1,j,k,0) + P(id,0,nxChunk-2,j,k,0) )/(c1*c1) ;
+                  Grad2X->P(id,0,nxChunk-1,j,k,1) = 0 ;                 
+              /*  }
+                else //right side processor interface on the right most processor
+                { //insert bc treatment here
+                   GradX->P(id,0,nxChunk-1,j,k,0) = (EastBoundary[j + nyChunk * k+ id*nyChunk*nzChunk]-P(id,0,nxChunk-2,j,k,0))/(2*c1) ;
+                   GradX->P(id,0,nxChunk-1,j,k,1) = 0 ;                
+  //                 cout<<"East Boundary value = "<<  EastBoundary[j + nyChunk * k+ id*nyChunk*nzChunk]<<"\n ???????????????????????????\n"; 
+                }*/
+                  
+             //   if(rank_x!=0) //left side processor interface not on the leftmost processor  
+             //   {
+                  Grad2X->P(id,0,0,j,k,0) = (P(id,0,1,j,k,0) -2*P(id,0,0,j,k,0) +WestGhosts[j + nyChunk * k+ id*nyChunk*nzChunk] )/(c1*c1) ;
+                  Grad2X->P(id,0,0,j,k,1) = 0 ;                 
+              /*  }
+                else
+                {
+                  GradX->P(id,0,0,j,k,0) = (P(id,0,1,j,k,0)  -WestBoundary[j + nyChunk * k+ id*nyChunk*nzChunk] )/(2*c1) ;
+                  GradX->P(id,0,0,j,k,1) = 0 ;                 
+//                  cout<<"West Boundary value = "<<  WestBoundary[j + nyChunk * k+ id*nyChunk*nzChunk]<<"\n ???????????????????????????\n"; 
+                }*/
+            }
+        }
+    }
+
+}
+
+
 void CFlowVariable::computeGradY()
 {
-   //  updateGhostsNS();
+     
       double x,y,z,u,v,w,c1,c2,c3;
      double *coords=getCoords();
      double *dxyz = getdxyz();
@@ -6036,6 +6142,98 @@ void CFlowVariable::computeGradY()
 }
 
 
+void CFlowVariable::computedY2()
+{
+     
+      double x,y,z,u,v,w,c1,c2,c3;
+     double *coords=getCoords();
+     double *dxyz = getdxyz();
+     double Xa = coords[0];
+     double Ya = coords[2];
+     double Za = coords[4];
+     double pi=3.14159265358979;
+
+   if ( !SHIFT )
+    {
+        c1 = ( coords[1] - coords[0] ) / ( nxChunk*p0 + 1. );
+        c2 = ( coords[3] - coords[2] ) / ( nyChunk*p0 + 1. );
+        c3 = ( coords[5] - coords[4] ) / ( nzChunk*p0 + 1. );
+
+    }
+    else
+    {
+        c1 = dxyz[0];
+        c2 = dxyz[1];
+        c3 = dxyz[2];
+    }
+    if(Grad2Y==NULL)
+    {
+      Grad2Y=new CFlowVariableSingleBlock(nxChunk*p0,nyChunk*p0,nzChunk*p0,p0);
+      Grad2Y->setBox(this->Xbox);
+//    cout<<"Xbox elements ="<<GradX->Xbox[0]<<" "<<GradX->Xbox[1]<<" "<<GradX->Xbox[2]<<" "<<GradX->Xbox[3]<<" "<<GradX->Xbox[4]<<"\n"; 
+       int dir=2;
+       Grad2Y->setCoords(dir);
+    }
+    updateGhostsNS();
+    int rank_y=myRank/p0;
+//    double c2=GradY->dxyz[1]; 
+
+//    cout<<"nChunk, x,y,k,dx="<<nChunk<<" "<<nxChunk<<" "<<nyChunk<<" "<<nzChunk<<" "<<GradX->dxyz[0]<<"\n"; 
+    for ( int id = 0; id < nChunk; id++ )
+    {
+#if ( PITTPACKACC )
+#pragma acc loop gang private( tmp[2 * nxChunk * nyChunk] )
+#endif
+        for ( int k = 0; k < nzChunk; k++ )
+        {
+//            assignTempX2Y( id, k, tmp );
+#if ( PITTPACKACC )
+#pragma acc loop worker
+#endif
+            for ( int i = 0; i < nxChunk; i++ )
+            {
+#if ( PITTPACKACC )
+#pragma acc loop vector
+#endif
+                for ( int j = 1; j < nyChunk-1; j++ )//interior points
+                {
+                   y = Ya + (j+1) * c2 - SHIFT * c2 * .5;
+                   Grad2Y->P(id,0,i,j,k,0) =(P(id,0,i,j+1,k,0) - 2*P(id,0,i,j,k,0) + P(id,0,i,j-1,k,0))/(c2*c2);//-2*pi*cos(2*pi*y) ;
+                   Grad2Y->P(id,0,i,j,k,1) = 0 ;                 
+                }
+
+             //   if(rank_y!=p0-1) //right side processor interface not on the rightmost processor  
+              //  {
+                  y = Ya + nyChunk * c2 - SHIFT * c2 * .5;
+                  Grad2Y->P(id,0,i,nyChunk-1,k,0) = (SouthGhosts[i + nxChunk * k + id*nxChunk*nzChunk] -2*P(id,0,i,nyChunk-1,k,0) + P(id,0,i,nyChunk-2,k,0))/(c2*c2);// -2*pi*cos(2*pi*y) ;
+                  Grad2Y->P(id,0,i,nyChunk-1,k,1) = 0 ;                 
+              /*  }
+                else //right side processor interface on the right most processor
+                { //insert bc treatment here
+                   y = Ya + nyChunk * c2 - SHIFT * c2 * .5;
+                  GradY->P(id,0,i,nyChunk-1,k,0) = (SouthBoundary[i + nxChunk * k + id*nxChunk*nzChunk]-P(id,0,i,nyChunk-2,k,0))/(2*c2);// -2*pi*cos(2*pi*y) ;
+                  GradY->P(id,0,i,nyChunk-1,k,1) = 0 ;                  
+                }*/
+                  
+             //   if(rank_y!=0) //left side processor interface not on the leftmost processor  
+             //   {
+                  y = Ya + (0+1) * c2 - SHIFT * c2 * .5;
+                  Grad2Y->P(id,0,i,0,k,0) = (P(id,0,i,1,k,0) -2*P(id,0,i,0,k,0)+ NorthGhosts[i + nxChunk * k + id*nxChunk*nzChunk])/(c2*c2);// -2*pi*cos(2*pi*y) ;
+                  Grad2Y->P(id,0,i,0,k,1) = 0 ;                 
+              /*  }
+                else
+                {
+                  y = Ya + (0+1) * c2 - SHIFT * c2 * .5;
+                  GradY->P(id,0,i,0,k,0) = (P(id,0,i,1,k,0)-NorthBoundary[i + nxChunk * k + id*nxChunk*nzChunk])/(2*c2);//-2*pi*cos(2*pi*y)  ;
+                  GradY->P(id,0,i,0,k,1) = 0 ;                
+                }*/
+            }
+        }
+    }
+}
+
+
+
 void CFlowVariable::computeGradZ()
 {
     
@@ -6053,7 +6251,7 @@ void CFlowVariable::computeGradZ()
 
 //    int rank_y=myRank/p0;
     double c3=GradZ->dxyz[2]; 
-    updateGhostBoundaryBT();
+    updateGhostBoundariesBT();
 //    cout<<"nChunk, x,y,k,dx="<<nChunk<<" "<<nxChunk<<" "<<nyChunk<<" "<<nzChunk<<" "<<GradX->dxyz[0]<<"\n"; 
     for ( int id = 0; id < nChunk; id++ )
     {
@@ -6106,6 +6304,77 @@ void CFlowVariable::computeGradZ()
 }
 
 
+
+void CFlowVariable::computedZ2()
+{
+    
+    if(Grad2Z==NULL)
+    {  
+       Grad2Z=new CFlowVariableSingleBlock(nxChunk*p0,nyChunk*p0,nzChunk*p0,p0);
+       Grad2Z->setBox(this->Xbox);
+//    cout<<"Xbox elements ="<<GradX->Xbox[0]<<" "<<GradX->Xbox[1]<<" "<<GradX->Xbox[2]<<" "<<GradX->Xbox[3]<<" "<<GradX->Xbox[4]<<"\n"; 
+       int dir=2;
+       Grad2Z->setCoords(dir);
+    }
+
+//     setGradZTopBoundary();
+  //   setGradZBottomBoundary();
+
+//    int rank_y=myRank/p0;
+    double c3=Grad2Z->dxyz[2]; 
+    updateGhostBoundariesBT();
+//    cout<<"nChunk, x,y,k,dx="<<nChunk<<" "<<nxChunk<<" "<<nyChunk<<" "<<nzChunk<<" "<<GradX->dxyz[0]<<"\n"; 
+    for ( int id = 0; id < nChunk; id++ )
+    {
+#if ( PITTPACKACC )
+#pragma acc loop gang private( tmp[2 * nxChunk * nyChunk] )
+#endif
+        for ( int j = 0; j < nyChunk; j++ )
+        {
+//            assignTempX2Y( id, k, tmp );
+#if ( PITTPACKACC )
+#pragma acc loop worker
+#endif
+            for ( int i = 0; i < nxChunk; i++ )
+            {
+#if ( PITTPACKACC )
+#pragma acc loop vector
+#endif
+                for ( int k = 1; k < nzChunk-1; k++ )//interior points
+                {
+                   Grad2Z->P(id,0,i,j,k,0) =(P(id,0,i,j,k+1,0)- 2*P(id,0,i,j,k,0) +P(id,0,i,j,k-1,0))/(c3*c3) ;
+                   Grad2Z->P(id,0,i,j,k,1) = 0 ;                 
+                }
+
+                if(id!=nChunk-1)
+                {
+                  Grad2Z->P(id,0,i,j,nzChunk-1,0) = (P(id+1,0,i,j,0,0)-2*P(id,0,i,j,nzChunk-1,0) +P(id,0,i,j,nzChunk-2,0))/(c3*c3) ;
+                  Grad2Z->P(id,0,i,j,nzChunk-1,1) = 0 ;                                
+                }                              
+                else 
+                {
+                  Grad2Z->P(id,0,i,j,nzChunk-1,0) = (TopGhosts[i+j*nxChunk] -2*P(id,0,i,j,nzChunk-1,0)+ P(id,0,i,j,nzChunk-2,0))/(c3*c3) ; ;
+                  Grad2Z->P(id,0,i,j,nzChunk-1,1) = 0 ;                                
+                }                                 
+         
+                if(id!=0)
+                { 
+                   Grad2Z->P(id,0,i,j,0,0) = (P(id,0,i,j,1,0)- 2*P(id,0,i,j,0,0) +P(id-1,0,i,j,nzChunk-1,0))/(c3*c3) ;
+                   Grad2Z->P(id,0,i,j,0,1) = 0 ;                 
+                } 
+                else
+                {
+                   Grad2Z->P(id,0,i,j,0,0) =(P(id,0,i,j,1,0) -2*P(id,0,i,j,0,0)+ BottomGhosts[i+j*nxChunk])/(c3*c3) ;
+                   Grad2Z->P(id,0,i,j,0,1) = 0 ;                 
+
+                }               
+               
+            }
+        }
+    }
+}
+
+
 void CFlowVariable::computeLaplacian()
 {
     if(Laplacian==NULL)
@@ -6116,23 +6385,34 @@ void CFlowVariable::computeLaplacian()
        int dir=2;
        Laplacian->setCoords(dir);
     }
-
+    
      Laplacian->initializeZero(); 
-           
+    /*
+     updateGhosts();       
      if(GradX==NULL)
         computeGradX();
- //    if(GradY==NULL)
-  //      computeGradY();
-//     if(GradZ==NULL)
-  //      computeGradZ();
+     if(GradY==NULL)
+        computeGradY();
+     if(GradZ==NULL)
+        computeGradZ();
    
-   //  GradX->computeGradX();
-  //   GradY->computeGradY();
-//     GradZ->computeGradZ();
-//     Laplacian->add(GradX->getGradX());
-//     Laplacian->add(GradY->getGradY());
-//     Laplacian->add(GradZ->getGradZ());
-      Laplacian->add(*GradX);
+     GradX->computeGradX();
+     GradY->computeGradY();
+     GradZ->computeGradZ();
+     Laplacian->add(GradX->getGradX());
+     Laplacian->add(GradY->getGradY());
+     Laplacian->add(GradZ->getGradZ());  */ 
+
+     updateGhosts();
+     computedX2();
+     computedY2();
+     computedZ2();
+
+     Laplacian->add(*Grad2X);
+   Laplacian->add(*Grad2Y);
+   Laplacian->add(*Grad2Z);
+   
+ 
 }
 
 void CFlowVariable:: assignValues(PencilDcmp *v)
@@ -6202,8 +6482,8 @@ void CFlowVariable::add( PencilDcmp& b)
 
                 {
                     //          P( id, 1, i, j, k, 0 ) = 1.0;
-                     P(id,0,i,j,k,0)+= b.getValue(id,i,j,k,0) ;//default dir =0
-                     P(id,0,i,j,k,1)+= b.getValue(id,i,j,k,1);
+                     P(id,0,i,j,k,0)+= 1.0*b.getValue(id,i,j,k,0) ;//default dir =0
+                     P(id,0,i,j,k,1)+= 1.0*b.getValue(id,i,j,k,1);
                 }
             }
         }
@@ -6262,16 +6542,14 @@ void CFlowVariableSingleBlock::start_exchangeEW(double* north_buf,double* south_
  //    GTIME_BEG(GTIME_EXCHANGE, TIMER_CUDA_SYNC);
 //   }
 
-
    int pid   = myRank;//HCONSTANT_DEVICE;//adapt as fit
    int nproc = p0;//HCONSTANT_GPUCOUNT;//adapt as fit
-
+   
    int  north_send_offset = layer_size;  // offset by one layer
    int  south_send_offset = layer_size * nlayers;
    size_t layer_size_bytes = layer_size * sizeof(double);
 
 
-/*
   for(int chunk=0;chunk<2*nChunk;chunk++)
    {
      exch->send_request[chunk] = MPI_REQUEST_NULL;
@@ -6279,138 +6557,151 @@ void CFlowVariableSingleBlock::start_exchangeEW(double* north_buf,double* south_
      exch->recv_request[chunk] = MPI_REQUEST_NULL;
    //  exch->recv_request[1] = MPI_REQUEST_NULL;
    }
-*/
+
 //   cout<<"nChunk = "<<nChunk<<"???????????? \n";
-
-   MPI_Status recv_stat[2];
-   MPI_Request recv_req[2];
-
-   MPI_Status send_stat[2];
-   MPI_Request send_req[2];
-
-   MPI_Request reqs[4];
-   MPI_Status stats[4];
 
    double* hbufnr = exch->buffer + 0*layer_size;
    double* hbufsr = exch->buffer + 1*layer_size;
    double* hbufns = exch->buffer + 2*layer_size;
    double* hbufss = exch->buffer + 3*layer_size;
 
- //   With non-stream exchanges, we will do synchronous memcpy's and MPI
-//     asynchronous calls.
+  int proc_row=pid%nproc;
+   MPI_Status status[2];
+   MPI_Status stat;
+   MPI_Request req[2];
 
-   #ifdef DEBUG_STATEMENTS_LEVEL09
-   printf("[%d] Start Exch: nlayers = %d layer_size = %d\n", pid, nlayers, layer_size);
-   #endif 
-   printf("[%d] Start Exch: nlayers = %d layer_size = %d\n", pid, nlayers, layer_size);
-   int proc_row=pid%nproc;
-
-    ofstream fout;
-    
-    int my_rank;
-    MPI_Comm_rank( MPI_COMM_WORLD, &my_rank );
-
-
-    std::string filename = "messages";
-    filename.append( to_string( my_rank ) );
-    fout.open( filename );
-cout<<" ++++++++++++++++++++++++ "<<endl;
-cout<<"comm start "<<endl;
-cout<<" ++++++++++++++++++++++++ "<<endl;
-
-
-       int dest=pid-1;
-   printf(RED "proc_row = %d %d \n"RESET, pid, proc_row);
-int count;
-//   cout<<"start exch: nproc= "<<nproc<<" row number = "<<proc_row<<"layer size= "<<layer_size<<"rank = "<<pid<<" \n";
+ 
+  
+/*
   for (int chunk=0; chunk<nChunk;chunk++)
   {
-//int chunk=0;
 //    Post receive for data from the north
-      //MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD, exch->recv_request+ 2*chunk+0);
-      dest=pid-1; 
-     if(proc_row==0)
-      {
-       dest=MPI_PROC_NULL;
-      }
-      MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, dest, 2*chunk+1, MPI_COMM_WORLD, &(reqs[0]));   
-  //  MPI_Wait(&(recv_req[0]),MPI_STATUS_IGNORE);
-  //    count++; 
- 
-    //  MPI_Recv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD,&(recv_status[0]));
-      
-      fout<<" rank "<<my_rank<< " recieving from "<<pid-1 <<endl;
-      fout<< hbufnr  <<endl;
-      fout<<" tag   "<<2*chunk+1 <<endl;
-   // Post receive for data from the south
-//   if (proc_row < nproc-1)
-    {
-      dest=pid+1; 
-      if(proc_row==p0-1)
-      {
-       dest=MPI_PROC_NULL;
-      }
-      MPI_Irecv(hbufsr, layer_size, MPI_DOUBLE,dest, 2*chunk+0, MPI_COMM_WORLD,&(reqs[1]));
-//    MPI_Wait(&(recv_req[1]),MPI_STATUS_IGNORE);
-     }    
-
-//    Match the receive: send data south
-//   if (proc_row < nproc-1) {
+   if (proc_row > 0){
+      MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD, exch->recv_request+ 2*chunk+0);
+   //   MPI_Wait(exch->recv_request + 2*chunk+0, &stat);
+         }
+   
+  //    Match the receive: send data south
+   if (proc_row < nproc-1) {
 //      COPY_FROM_GPU(hbufss, data_dev+south_send_offset, layer_size_bytes, "MPI Exch: D2H BufSS");//adapt as fit: copy gpu, single layer only
 
       for(int i=0;i<layer_size;i++) hbufss[i] = south_buf[chunk*nyChunk*nzChunk + i];
- 
-      dest=pid+1;      
-      if(proc_row==p0-1)
-      {
-       dest=MPI_PROC_NULL;
-      }
-       MPI_Isend(hbufss, layer_size, MPI_DOUBLE, dest, 2*chunk+1, MPI_COMM_WORLD, &(reqs[2]));
-      // MPI_Wait(&(send_req[0]),MPI_STATUS_IGNORE);
-      //MPI_Send(hbufss, layer_size, MPI_DOUBLE, pid+1, 2*chunk+1, MPI_COMM_WORLD);
-//   }
 
-#if(1)
+      MPI_Isend(hbufss, layer_size, MPI_DOUBLE, pid+1, 2*chunk+1, MPI_COMM_WORLD, exch->send_request+ 2*chunk+1);
+  //    MPI_Wait(exch->send_request + 2*chunk+1, &stat);
+      cout<<"rank "<<myRank<<" sends chunk "<<chunk<<" to "<<pid+1<<" with Tag "<<2*chunk+1<<"address = "<<hbufss<<" with value0 = "<<hbufss[1]<<"  \n\n"; 
+   }
 
-//   Match the receive: send data north
-//   if (proc_row > 0) {
-//   COPY_FROM_GPU(hbufns, data_dev+north_send_offset, layer_size_bytes, "MPI Exch: D2H BufNS");
+   // Post receive for data from the south
+   if (proc_row < nproc-1){
+      MPI_Irecv(hbufsr, layer_size, MPI_DOUBLE, pid+1, 2*chunk+0, MPI_COMM_WORLD, exch->recv_request+ 2*chunk+1);
+}
+   //    MPI_Wait(exch->recv_request + 2*chunk+1, &stat);                         }
+//      cout<<"rank "<<myRank<<" receives chunk "<<chunk<<" from "<<pid+1<<" with value0 = "<<hbufsr[1]<<"  \n\n"; }
+
+//    Match the receive: send data north
+   if (proc_row > 0) {
+  //    COPY_FROM_GPU(hbufns, data_dev+north_send_offset, layer_size_bytes, "MPI Exch: D2H BufNS");
       
       for(int i=0;i<layer_size;i++) hbufns[i] = north_buf[chunk*nyChunk*nzChunk + i];
 
-      dest=pid-1;
-      if(dest < 0)
-      {
-       dest=MPI_PROC_NULL;
-      }
-      MPI_Isend(hbufns, layer_size, MPI_DOUBLE, dest, 2*chunk+0, MPI_COMM_WORLD, &(reqs[3]));
-      //MPI_Wait(&(send_req[1]),MPI_STATUS_IGNORE);
-
-//   }
-//
-      MPI_Waitall(4,reqs,stats);
-/*
-      MPI_Wait(&(recv_req[0]),MPI_STATUS_IGNORE);
-      MPI_Wait(&(recv_req[1]),MPI_STATUS_IGNORE);
-      //MPI_Wait(&(send_req[0]),MPI_STATUS_IGNORE);
-      MPI_Wait(&(send_req[1]),MPI_STATUS_IGNORE);
+      MPI_Isend(hbufns, layer_size, MPI_DOUBLE, pid-1, 2*chunk+0, MPI_COMM_WORLD, exch->send_request+ 2*chunk+0);
+ //      MPI_Wait(exch->send_request + 2*chunk+0, &stat);     
+      cout<<"rank "<<myRank<<" sends chunk "<<chunk<<" to "<<pid-1<<" with Tag "<<2*chunk<<"address = "<<hbufns<<" with value0 = "<<hbufns[1]<<"  \n\n"; 
+   }*/
+  /* if(proc_row > 0 && proc_row < nproc-1) 
+   {
+     req[0] = exch->send_request[2*chunk];
+     req[1] = exch->send_request[2*chunk+1];
+     MPI_Waitall(2,req,status);   
+      
+   }
+   else if(proc_row==0)
+     MPI_Wait(send_request+2*chunk+1,MPI_STATUS_IGNORE);
+   else if(proc_row == nproc-1)
+     MPI_Wait(send_request+2*chunk,MPI_STATUS_IGNORE);
 */
-#endif 
+    
+// }
 
-//   count=0;
+  double *temp_nbuf =new double[layer_size*nChunk];
+  double *temp_sbuf =new double[layer_size*nChunk];
+  for (int chunk=0; chunk<nChunk;chunk++)
+  {
+     for(int i=0;i<layer_size;i++)
+      {
+         temp_sbuf[chunk*nyChunk*nzChunk +i ] = south_buf[chunk*nyChunk*nzChunk + i];
+         temp_nbuf[chunk*nyChunk*nzChunk +i ] = north_buf[chunk*nyChunk*nzChunk + i];
+      }
+  }
 
- }
 
-fout.close();
-cout<<" ++++++++++++++++++++++++ "<<endl;
-cout<<"comm over "<<my_rank<<endl;
-cout<<" ++++++++++++++++++++++++ "<<endl;
+  int count = 0; 
+  MPI_Request recv_req[2];
+  int dest;
+ for (int chunk=0; chunk<nChunk;chunk++)
+  {
+//    Post receive for data from the north
+   if (proc_row > 0)
+   {
+      //MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD, exch->recv_request+ 2*chunk+0);
+    dest =pid-1;
+    if(dest<0) dest=MPI_PROC_NULL;
+      MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, dest, 2*chunk+1, MPI_COMM_WORLD, &(recv_req[0]));   
+      MPI_Wait(&(recv_req[0]),MPI_STATUS_IGNORE);
+     for(int i=0;i<layer_size;i++)north_buf[chunk*nyChunk*nzChunk+i]=hbufnr[i];  
+      count++;
+ 
+    //  MPI_Recv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD,&(recv_status[0]));
+           
+  //    fout<<" rank "<<myRank<< " recieving from "<<pid-1 <<endl;
+  //    fout<< hbufnr  <<endl;
+   //   fout<<" tag   "<<2*chunk+1 <<endl;
+    }    
+//    Match the receive: send data south
+   if (proc_row < nproc-1) {
+//      COPY_FROM_GPU(hbufss, data_dev+south_send_offset, layer_size_bytes, "MPI Exch: D2H BufSS");//adapt as fit: copy gpu, single layer only
+      dest = pid+1;
+      if(dest>nproc*nproc-1) dest= MPI_PROC_NULL;
+      for(int i=0;i<layer_size;i++) hbufss[i] =  temp_sbuf[chunk*nyChunk*nzChunk + i];
+     // MPI_Isend(hbufss, layer_size, MPI_DOUBLE, pid+1, 2*chunk+1, MPI_COMM_WORLD, &(send_req[0]));
+      MPI_Send(hbufss, layer_size, MPI_DOUBLE, dest, 2*chunk+1, MPI_COMM_WORLD);
+     
+    //  fout<<"============================================="<<endl;
+    //  fout<<" rank "<<myRank<< " sending to "<<pid+1 <<endl;
+    //  fout<< hbufnr  <<endl;
+    //  fout<<" tag   "<<2*chunk+1 <<endl;
+   }
 
+   // Post receive for data from the south
+   if (proc_row < nproc-1)
+    {  
+       dest =pid+1;
+      if(dest>nproc*nproc-1) dest= MPI_PROC_NULL;  
+      MPI_Irecv(hbufsr, layer_size, MPI_DOUBLE, dest, 2*chunk+0, MPI_COMM_WORLD,&(recv_req[1]));
+      MPI_Wait(&(recv_req[1]),MPI_STATUS_IGNORE);
+      for(int i=0;i<layer_size;i++) south_buf[chunk*nyChunk*nzChunk+i]=hbufsr[i];
+     }    
+    //  fout<<" Ircv "<<myRank<< " recieving from "<<pid+1 <<endl;
+   //   fout<< hbufnr  <<endl;
+   //   fout<<" tag   "<< 2*chunk <<endl;
 
-//   GTIME_END(GTIME_EXCHANGE, TIMER_CUDA_NOSYNC);
+//    Match the receive: send data north
+   if (proc_row > 0) {
+  //    COPY_FROM_GPU(hbufns, data_dev+north_send_offset, layer_size_bytes, "MPI Exch: D2H BufNS");
+     dest =pid-1;
+    if(dest<0) dest=MPI_PROC_NULL;          
+      for(int i=0;i<layer_size;i++) hbufns[i] = temp_nbuf[chunk*nyChunk*nzChunk + i];
+      //MPI_Isend(hbufns, layer_size, MPI_DOUBLE, pid-1, 2*chunk+0, MPI_COMM_WORLD, &(send_req[0]));
+      MPI_Send(hbufns, layer_size, MPI_DOUBLE, dest, 2*chunk+0, MPI_COMM_WORLD);
+
+    }
+   }
+
+  delete temp_nbuf;
+  delete temp_sbuf;  
+
 }
-
-
 
 void CFlowVariableSingleBlock:: finish_exchangeEW(double* north_buf,double* south_buf,
    unsigned long layer_size, unsigned long nlayers,mpi_exchange* exch, int flags)
@@ -6426,39 +6717,36 @@ void CFlowVariableSingleBlock:: finish_exchangeEW(double* north_buf,double* sout
 
    double* hbufnr = exch->buffer + 0*layer_size;
    double* hbufsr = exch->buffer + 1*layer_size;
+   MPI_Status stat;
 
    #ifdef DEBUG_STATEMENTS_LEVEL09
    printf("[%d] Finish Exch: nlayers = %d layer_size = %d\n", pid, nlayers, layer_size);
    #endif // DEBUG_STATEMENTS_LEVEL09
 
-#if(0)
 //   GTIME_BEG(GTIME_EXCHANGE, TIMER_CUDA_NOSYNC);
    int proc_row=pid%nproc;
  //  cout<<"finish exch: nproc= "<<nproc<<" row number = "<<proc_row<<"layer size="<<layer_size<<" rank = "<<pid<<" \n";
    for(int chunk=0;chunk<nChunk;chunk++) 
 {
    if (proc_row > 0) {
-      MPI_Wait(exch->recv_request + 2*chunk+0, MPI_STATUS_IGNORE);
+      MPI_Wait(exch->recv_request + 2*chunk+0, &stat);
    //   COPY_TO_GPU(data_dev+north_recv_offset, hbufnr, layer_size_bytes, "MPI Exch: H2D bufnr");
        for(int i=0;i<layer_size;i++)north_buf[chunk*nyChunk*nzChunk+i]=hbufnr[i];  
-  //     cout<<"rank= "<<myRank<<" chunk = "<<chunk<<" left value0 = "<<hbufnr[0]<<"\n\n\n";
+      if(hbufnr[0]!=chunk*16) 
+       cout<<"rank= "<<myRank<<" receiving chunk = "<<chunk<<" from source "<<stat.MPI_SOURCE<<" with tag "<<stat.MPI_TAG<<"address = "<<hbufnr<<" left value0 = "<<hbufnr[0]<<"\n\n\n";
    }
    if (proc_row < nproc - 1) {
-      MPI_Wait(exch->recv_request + 2*chunk+1, MPI_STATUS_IGNORE);
+      MPI_Wait(exch->recv_request + 2*chunk+1, &stat);
     //  COPY_TO_GPU(data_dev+south_recv_offset, hbufsr, layer_size_bytes, "MPI Exch: H2D bufsr");
        for(int i=0;i<layer_size;i++) south_buf[chunk*nyChunk*nzChunk+i]=hbufsr[i];
-//       cout<<"rank= "<<myRank<<" chunk = "<<chunk<<" right value0 = "<<hbufsr[0]<<"\n\n\n";
+       if(hbufsr[0]!=chunk*16)   
+       cout<<"rank= "<<myRank<<" receiving chunk = "<<chunk<<" from source "<<stat.MPI_SOURCE<<" with tag "<<stat.MPI_TAG<<"address = "<<hbufsr<<" right value0 = "<<hbufsr[0]<<"\n\n\n";
    }
 
-//   if (flags & EXCH_FLAG_NOWAIT) {
-      // Skip the MPI_Waitall.  You _must_ call it before reusing the buffer!
-//   } else {
       MPI_Waitall(2*nChunk, exch->send_request, MPI_STATUSES_IGNORE);
 
   }
-//   }
-  // GTIME_END(GTIME_EXCHANGE, TIMER_CUDA_NOSYNC);
-  #endif
+
 }
 
 
@@ -6467,110 +6755,10 @@ void CFlowVariableSingleBlock::exchange_scalarEW(double* north_buf, double* sout
 {
    // Optimize away single GPU case.
 //   if (HCONSTANT_GPUCOUNT == 1)return;
-/*
+
    start_exchangeEW(north_buf, south_buf,layer_size, nlayers, exch, flags);
-   finish_exchangeEW(north_buf, south_buf,layer_size, nlayers, exch, flags);
-*/
-
- int my_rank,comsize;
-
- MPI_Comm_size( MPI_COMM_WORLD, &comsize );
- MPI_Comm_rank( MPI_COMM_WORLD, &my_rank );
-
- cart_communicate  C(nxChunk,nyChunk,my_rank,comsize); 
-
- constructNbrs(C);
-
- swapGhosts(C);
-
-
+ //  finish_exchangeEW(north_buf, south_buf,layer_size, nlayers, exch, flags);
 }
-#if(1)
-void CFlowVariableSingleBlock::swapGhosts(cart_communicate &C)
-{
-   // Optimize away single GPU case.
-//   if (HCONSTANT_GPUCOUNT == 1)return;
-
-
-  int indixes[2] = { 1, -1 };
-  int source = 0;
-  int dest = 0;
-  int direction = 1;
-  int disp = -1;
-
-  MPI_Status status[8];
-  MPI_Request req[8];
-
-  int size=nxChunk*nx;
-
-  double *recv[4];
-  double *send[2];
-
-for(int i=0;i<4;i++)
-{
-  recv[i]=new double[nxChunk*nyChunk];
-  send[i]=new double[nxChunk*nyChunk];
-}
-// Southe and North
-// just posted the recieves first to improve performance
-
- int n= nxChunk*nyChunk;
-
-for(int chunk=0; chunk<nChunk;chunk++)
-{
-  MPI_Irecv(recv[0], n, MPI_DOUBLE, src[0], 0, MPI_COMM_WORLD, &req[0]);
-  MPI_Irecv(recv[1], n, MPI_DOUBLE, src[1], 0, MPI_COMM_WORLD, &req[2]);
-  MPI_Irecv(recv[2], n, MPI_DOUBLE, src[2], 0, MPI_COMM_WORLD, &req[5]);
-  MPI_Irecv(recv[3], n, MPI_DOUBLE, src[3], 0, MPI_COMM_WORLD, &req[7]);
-
-
-  MPI_Isend(send[0], n, MPI_DOUBLE,  dst[0], 0, MPI_COMM_WORLD, &req[1]);
-  MPI_Isend(send[1], n, MPI_DOUBLE,  dst[1], 0, MPI_COMM_WORLD, &req[3]);
-  MPI_Isend(send[2], n, MPI_DOUBLE, dst[2], 0, MPI_COMM_WORLD, &req[4]);
-  MPI_Isend(send[3], n, MPI_DOUBLE, dst[3], 0, MPI_COMM_WORLD, &req[6]);
-
-  MPI_Waitall(8,req,status);
-
-}
-
-
-}
-
-#endif
-
-void CFlowVariableSingleBlock::constructNbrs(cart_communicate &C) {
-  int source = 0;
-  int dest = 0;
-  int direction = 1;
-  int disp = -1;
-
-  C.shift(direction, disp, &source, &dest);
-  dst[0]=dest;  
-  src[0]=source;  
-
-  disp = +1;
-  C.shift(direction, disp, &source, &dest);
-
-  dst[1]=dest;  
-  src[1]=source;  
-
-  disp = 1;
-  direction = 0;
-  C.shift(direction, disp, &source, &dest);
-
-  dst[2]=dest;  
-  src[2]=source;  
-
-  disp = -1;
-  C.shift(direction, disp, &source, &dest);
-
-  dst[3]=dest;  
-  src[3]=source;  
-
-}
-
-
-
 
 void CFlowVariableSingleBlock::updateGhostsEW()
 {
@@ -6592,10 +6780,8 @@ void CFlowVariableSingleBlock::updateGhostsEW()
                 EastGhosts[chunk*nzChunk*nyChunk + nyChunk * k + j] = P(chunk,0,i_e,j,k,0);
                 WestGhosts[chunk*nzChunk*nyChunk + nyChunk * k + j] = P(chunk,0,i_w,j,k,0);
                int index = j+nyChunk*k+chunk*nzChunk*nyChunk;
-#if(0)
-             if( fabs(WestGhosts[index]-EastGhosts[index])>1.0e-3 ) 
-              cout<<"before exchange, inequal ghosts:  rank= "<<myRank<<" chunk = "<<chunk<<", j= "<<j<<", k = "<<k<<":West Ghost= "<<WestGhosts[index]<<" EastGhost= "<<EastGhosts[index]<<" \n";
-#endif
+         //    if( fabs(WestGhosts[index]-EastGhosts[index])>1.0e-3 ) 
+           //   cout<<"before exchange, inequal ghosts:  rank= "<<myRank<<" chunk = "<<chunk<<", j= "<<j<<", k = "<<k<<":West Ghost= "<<WestGhosts[index]<<" EastGhost= "<<EastGhosts[index]<<" \n";
           //   if(myRank%p0 >0)
           //    cout<<"before exchange: right rank= "<<myRank<<" chunk = "<<chunk<<", j= "<<j<<", "<<k<<":West Ghost= "<<WestGhosts[index]<<" EastGhost= "<<EastGhosts[index]<<" \n";
             }
@@ -6605,26 +6791,33 @@ void CFlowVariableSingleBlock::updateGhostsEW()
 
   exchange_scalarEW(WestGhosts, EastGhosts, nyChunk*nzChunk,1,&exch,0 );
   updateGhostBoundariesEW();
+  
+  delete   exch.send_request;
+  delete   exch.recv_request;
+  delete   exch.buffer; 
+
 
 for(int chunk=0;chunk<nChunk;chunk++)
 {
   for ( int k = 0; k < nzChunk; k++ )
     {
            
-       #if(0) 
+        
             for ( int j = 0; j < nyChunk; j++ )
             {
                int index=j+nyChunk*k+chunk*nzChunk*nyChunk;
-              if( fabs(WestGhosts[index]-EastGhosts[index])>1.0e-3   )
-              cout<<"after exchange, inequal ghosts:  rank= "<<myRank<<" chunk = "<<chunk<<" j= "<<j<<", k= "<<k<<":West Ghost= "<<WestGhosts[index]<<" EastGhost= "<<EastGhosts[index]<<" \n";
+           //   if( fabs(WestGhosts[index]-EastGhosts[index])>1.0e-3   )
+           //   cout<<"after exchange, inequal ghosts:  rank= "<<myRank<<" chunk = "<<chunk<<" j= "<<j<<", k= "<<k<<":West Ghost= "<<WestGhosts[index]<<" EastGhost= "<<EastGhosts[index]<<" \n";
             // if(myRank%p0 >0)
              // cout<<"after exchange: right rank= "<<myRank<<" chunk = "<<chunk<<" j= "<<j<<", "<<k<<":West Ghost= "<<WestGhosts[index]<<" EastGhost= "<<EastGhosts[index]<<" \n";
             }                                        
-       #endif
+
             }
 }
       
 }
+
+
 void CFlowVariableSingleBlock::start_exchangeNS(double* north_buf,double* south_buf,
    unsigned long layer_size, unsigned long nlayers,
    mpi_exchange* exch, int flags)
@@ -6666,7 +6859,7 @@ void CFlowVariableSingleBlock::start_exchangeNS(double* north_buf,double* south_
    #endif 
    int proc_row=pid/nproc;
 //   cout<<"start exch: nproc= "<<nproc<<" row number = "<<proc_row<<"layer size= "<<layer_size<<" \n";
-  for (int chunk=0; chunk<nChunk;chunk++)
+/*  for (int chunk=0; chunk<nChunk;chunk++)
   {
 //    Post receive for data from the north
    if (proc_row > 0)
@@ -6693,8 +6886,89 @@ void CFlowVariableSingleBlock::start_exchangeNS(double* north_buf,double* south_
 
       MPI_Isend(hbufns, layer_size, MPI_DOUBLE, pid-1*nproc, DATA_SOUTH*nChunk+chunk, MPI_COMM_WORLD, exch->send_request + 2*chunk+0);
    }
+
+
   }
-//   GTIME_END(GTIME_EXCHANGE, TIMER_CUDA_NOSYNC);
+*/
+
+  int count = 0; 
+  MPI_Request recv_req[2];
+
+
+  double *temp_nbuf =new double[layer_size*nChunk];
+  double *temp_sbuf =new double[layer_size*nChunk];
+  for (int chunk=0; chunk<nChunk;chunk++)
+  {
+     for(int i=0;i<layer_size;i++)
+      {
+         temp_sbuf[chunk*nxChunk*nzChunk +i ] = south_buf[chunk*nxChunk*nzChunk + i];
+         temp_nbuf[chunk*nxChunk*nzChunk +i ] = north_buf[chunk*nxChunk*nzChunk + i];
+      }
+  }
+  int dest;
+ for (int chunk=0; chunk<nChunk;chunk++)
+  {
+//    Post receive for data from the north
+   if (proc_row > 0)
+   {
+      dest = pid-1*nproc;
+      if(dest<0) dest= MPI_PROC_NULL;
+      //MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD, exch->recv_request+ 2*chunk+0);
+      MPI_Irecv(hbufnr, layer_size, MPI_DOUBLE, dest, 2*chunk+1, MPI_COMM_WORLD, &(recv_req[0]));   
+      MPI_Wait(&(recv_req[0]),MPI_STATUS_IGNORE);
+      for(int i=0;i<layer_size;i++) north_buf[chunk*nyChunk*nzChunk+i]=hbufnr[i];
+      count++;
+ 
+    //  MPI_Recv(hbufnr, layer_size, MPI_DOUBLE, pid-1, 2*chunk+1, MPI_COMM_WORLD,&(recv_status[0]));
+           
+  //    fout<<" rank "<<myRank<< " recieving from "<<pid-1 <<endl;
+  //    fout<< hbufnr  <<endl;
+   //   fout<<" tag   "<<2*chunk+1 <<endl;
+    }    
+//    Match the receive: send data south
+   if (proc_row < nproc-1) 
+    {
+      dest = pid+1*nproc;
+      if (dest > nproc*nproc-1)
+        dest = MPI_PROC_NULL;
+//      COPY_FROM_GPU(hbufss, data_dev+south_send_offset, layer_size_bytes, "MPI Exch: D2H BufSS");//adapt as fit: copy gpu, single layer only
+      for(int i=0;i<layer_size;i++) hbufss[i] = temp_sbuf[chunk*nxChunk*nzChunk + i];
+     // MPI_Isend(hbufss, layer_size, MPI_DOUBLE, pid+1, 2*chunk+1, MPI_COMM_WORLD, &(send_req[0]));
+      MPI_Send(hbufss, layer_size, MPI_DOUBLE, dest, 2*chunk+1, MPI_COMM_WORLD);
+     
+    //  fout<<"============================================="<<endl;
+    //  fout<<" rank "<<myRank<< " sending to "<<pid+1 <<endl;
+    //  fout<< hbufnr  <<endl;
+    //  fout<<" tag   "<<2*chunk+1 <<endl;
+   }
+
+   // Post receive for data from the south
+   if (proc_row < nproc-1)
+    {
+       dest = pid+1*nproc;
+      if (dest > nproc*nproc-1)
+        dest = MPI_PROC_NULL;   
+      MPI_Irecv(hbufsr, layer_size, MPI_DOUBLE, dest, 2*chunk+0, MPI_COMM_WORLD,&(recv_req[1]));
+      MPI_Wait(&(recv_req[1]),MPI_STATUS_IGNORE);
+      for(int i=0;i<layer_size;i++) south_buf[chunk*nyChunk*nzChunk+i]=hbufsr[i];
+     }    
+    //  fout<<" Ircv "<<myRank<< " recieving from "<<pid+1 <<endl;
+   //   fout<< hbufnr  <<endl;
+   //   fout<<" tag   "<< 2*chunk <<endl;
+
+//    Match the receive: send data north
+   if (proc_row > 0) {
+  //    COPY_FROM_GPU(hbufns, data_dev+north_send_offset, layer_size_bytes, "MPI Exch: D2H BufNS");
+       dest = pid-1*nproc;
+      if(dest<0) dest= MPI_PROC_NULL;          
+      for(int i=0;i<layer_size;i++) hbufns[i] = temp_nbuf[chunk*nxChunk*nzChunk + i];
+      //MPI_Isend(hbufns, layer_size, MPI_DOUBLE, pid-1, 2*chunk+0, MPI_COMM_WORLD, &(send_req[0]));
+      MPI_Send(hbufns, layer_size, MPI_DOUBLE, dest, 2*chunk+0, MPI_COMM_WORLD);
+    }
+  } 
+ 
+  delete temp_nbuf;
+  delete temp_sbuf;  
 }
 
 void CFlowVariableSingleBlock:: finish_exchangeNS(double* north_buf,double* south_buf,
@@ -6748,7 +7022,7 @@ void CFlowVariableSingleBlock::exchange_scalarNS(double* north_buf, double* sout
 //   if (HCONSTANT_GPUCOUNT == 1)return;
 
    start_exchangeNS(north_buf, south_buf,layer_size, nlayers, exch, flags);
-   finish_exchangeNS(north_buf, south_buf,layer_size, nlayers, exch, flags);
+  // finish_exchangeNS(north_buf, south_buf,layer_size, nlayers, exch, flags);
 }
 
 void CFlowVariableSingleBlock::updateGhostsNS()
@@ -6790,6 +7064,10 @@ void CFlowVariableSingleBlock::updateGhostsNS()
  // setGradYNorthBoundary();
 //  setGradYSouthBoundary();
   updateGhostBoundariesNS();
+
+  delete   exch.send_request;
+  delete   exch.recv_request;
+  delete   exch.buffer; 
 /*  for ( int k = 0; k < nzChunk; k++ )
     {
            
@@ -6933,9 +7211,38 @@ void CFlowVariable::updateGhostBoundariesEW()//update boundary ghost values for 
 
 
 
-
-
       if(proc_column==p0-1)
+      {
+         MPI_Irecv(EastBoundary, nChunk*nzChunk*nyChunk, MPI_DOUBLE, myRank-(p0-1), 0, MPI_COMM_WORLD, &recv_req[0]);
+         MPI_Wait(&recv_req[0], MPI_STATUS_IGNORE);
+
+  
+      }
+
+      if(proc_column==0)
+      {
+
+
+        MPI_Send(WestGhosts, nChunk*nzChunk*nyChunk, MPI_DOUBLE, myRank+(p0-1),0,MPI_COMM_WORLD);//, &send_req[1]);//send to right most processor
+      }
+     
+     
+
+
+      if (proc_column == 0) {
+        MPI_Irecv(WestBoundary, nChunk*nzChunk*nyChunk, MPI_DOUBLE, myRank+(p0-1), 1, MPI_COMM_WORLD, &recv_req[1]);
+        MPI_Wait(&recv_req[1], MPI_STATUS_IGNORE);
+
+   }
+
+
+      if (proc_column == p0-1) {
+         MPI_Send(EastGhosts, nChunk*nzChunk*nyChunk, MPI_DOUBLE, myRank-(p0-1),1,MPI_COMM_WORLD);//, &send_req[0]);//send to right most processor
+
+      }
+
+
+    /*  if(proc_column==p0-1)
       {
          MPI_Irecv(EastBoundary, nChunk*nzChunk*nyChunk, MPI_DOUBLE, myRank-p0+1, 0, MPI_COMM_WORLD, &recv_req[0]);
 
@@ -6960,7 +7267,7 @@ void CFlowVariable::updateGhostBoundariesEW()//update boundary ghost values for 
       if (proc_column == 0) {
       MPI_Wait(&recv_req[1], MPI_STATUS_IGNORE);
 
-   }
+   }*/
 
 
    if(proc_column==p0-1)
@@ -7024,30 +7331,34 @@ void CFlowVariable::updateGhostBoundariesNS()//update boundary ghost values for 
 
       if(proc_row==p0-1)
       {
-         MPI_Irecv(SouthBoundary, nChunk*nzChunk*nyChunk, MPI_DOUBLE, myRank-(p0-1)*p0, 0, MPI_COMM_WORLD, &recv_req[0]);
+         MPI_Irecv(SouthBoundary, nChunk*nzChunk*nxChunk, MPI_DOUBLE, myRank-(p0-1)*p0, 0, MPI_COMM_WORLD, &recv_req[0]);
+         MPI_Wait(&recv_req[0], MPI_STATUS_IGNORE);
 
-
-         MPI_Isend(SouthGhosts, nChunk*nzChunk*nyChunk, MPI_DOUBLE, myRank-(p0-1)*p0,1,MPI_COMM_WORLD, &send_req[0]);//send to right most processor
   
       }
 
       if(proc_row==0)
       {
-        MPI_Irecv(NorthBoundary, nChunk*nzChunk*nyChunk, MPI_DOUBLE, myRank+(p0-1)*p0, 1, MPI_COMM_WORLD, &recv_req[1]);
 
 
-        MPI_Isend(NorthGhosts, nChunk*nzChunk*nyChunk, MPI_DOUBLE, myRank+(p0-1)*p0,0,MPI_COMM_WORLD, &send_req[1]);//send to right most processor
+        MPI_Send(NorthGhosts, nChunk*nzChunk*nxChunk, MPI_DOUBLE, myRank+(p0-1)*p0,0,MPI_COMM_WORLD);//, &send_req[1]);//send to right most processor
       }
      
-      if (proc_row == p0-1) {
-      MPI_Wait(&recv_req[0], MPI_STATUS_IGNORE);
-      }
+     
 
 
       if (proc_row == 0) {
-      MPI_Wait(&recv_req[1], MPI_STATUS_IGNORE);
+        MPI_Irecv(NorthBoundary, nChunk*nzChunk*nxChunk, MPI_DOUBLE, myRank+(p0-1)*p0, 1, MPI_COMM_WORLD, &recv_req[1]);
+        MPI_Wait(&recv_req[1], MPI_STATUS_IGNORE);
 
    }
+
+
+      if (proc_row == p0-1) {
+         MPI_Send(SouthGhosts, nChunk*nzChunk*nxChunk, MPI_DOUBLE, myRank-(p0-1)*p0,1,MPI_COMM_WORLD);//, &send_req[0]);//send to right most processor
+
+      }
+
 
    if(proc_row==p0-1)
    {
@@ -7089,6 +7400,12 @@ void CFlowVariable::updateGhostBoundariesNS()//update boundary ghost values for 
 
 }
 
+
+void CFlowVariable::RefreshGradient()
+{
+   GradX=NULL; GradY=NULL; GradZ=NULL;
+
+}
 
 void CFlowVariable::setGradYSouthBoundary()
 {
@@ -7192,7 +7509,7 @@ void CFlowVariable::setGradYNorthBoundary()
    }
 }
 
-void CFlowVariable::updateGhostBoundaryBT()
+void CFlowVariable::updateGhostBoundariesBT()
 {
 //     int proc_column = myRank % p0;
      double Xa = coords[0];
@@ -7269,6 +7586,14 @@ void CFlowVariable::scaleField(double s)
             }
         }
     }
+}
+
+
+void CFlowVariableSingleBlock::updateGhosts()
+{
+  updateGhostsEW();
+  updateGhostsNS();
+  updateGhostBoundariesBT();
 }
 
 
@@ -7410,8 +7735,12 @@ void CVelocitySingleBlock::initializeVelocity()
 }
 
 
-void CVelocitySingleBlock::updateFaceVelocity()
+void CVelocitySingleBlock::Refresh()
 {
+   U->RefreshGradient();
+   V->RefreshGradient();
+   W->RefreshGradient();
+
 }
 
 
@@ -7564,9 +7893,9 @@ void CProjectionMomentumSingleBlock:: initialize()
                 {
                     x = Xa + (i+1) * c1 - SHIFT * c1 * .5;
                    // x = Xa + ( i + 1 ) * c1; 
-                    u = sin(2*pi*y); 
-                    w = sin(2*pi*x);
-                    v = k + id*nzChunk; 
+                    u = 1.0*cos(4*pi*x)*sin(4*pi*y); 
+                    w = 0;//-sin(6*pi*x)*cos(4*pi*y)*sin(2*pi*z); 
+                    v = -1.0*sin(4*pi*x)*cos(4*pi*y);//*cos(2*pi*z);  
 
                     U->setValue(u, id ,i,j,k,0);
                     V->setValue(v, id ,i,j,k,0);
@@ -7581,6 +7910,11 @@ void CProjectionMomentumSingleBlock:: initialize()
 
 
    Veln->setVelocity(*U,*V,*W);
+   Vel_predict->setVelocity(*U,*V,*W);
+
+
+   Vel_old->setVelocity(*U,*V,*W);
+   Vel_predict_old->setVelocity(*U,*V,*W);
 }
 
 
@@ -7604,9 +7938,11 @@ CProjectionMomentumSingleBlock::CProjectionMomentumSingleBlock(double dt, int nx
 
 
    Veln= new CVelocitySingleBlock(nx,ny,nz,np,Xb);
-   
+   Vel_old= new CVelocitySingleBlock(nx,ny,nz,np,Xb);  
    Vel_predict= new CVelocitySingleBlock(nx,ny,nz,np,Xb);
+   Vel_predict_old= new CVelocitySingleBlock(nx,ny,nz,np,Xb);
    Pressure = new CFlowVariableSingleBlock(  nx,  ny,  nz,  np, Xb );
+   Pressure->initializeZero();
    Massflow = new CFlowVariableSingleBlock(  nx,  ny,  nz,  np, Xb );
 }
 
@@ -7615,84 +7951,135 @@ void CProjectionMomentumSingleBlock::predictVelocity()
 {
    //currently use first order time stepping, may be unconditionally unstable in inviscid case for CD
 
-   int nChunk=p0,nzChunk=Nz/p0,nyChunk=Ny/p0,nxChunk=Nx/p0;
-   
-     double x,y,z,u,v,w,c1,c2,c3;
-     double *coords= Veln->getU().getCoords();
-     double *dxyz =  Veln->getU().getdxyz();
-     double Xa = coords[0];
-     double Ya = coords[2];
-     double Za = coords[4];
-     double pi=3.14159265358979;
-  
-//     PencilDcmp U(Nx,Ny,Nz,p0,p0); 
-  //   PencilDcmp V(Nx,Ny,Nz,p0,p0); 
-   //  PencilDcmp W(Nx,Ny,Nz,p0,p0);
- 
-     CFlowVariableSingleBlock &cvu = convectionTerm(*Veln,Veln->getU());
-     CFlowVariableSingleBlock &cvv = convectionTerm(*Veln,Veln->getV());
-     CFlowVariableSingleBlock &cvw = convectionTerm(*Veln,Veln->getW());
+     Vel_predict->setVelocity(Veln->getU(),Veln->getV(),Veln->getW());
+        
+     Vel_predict->getU().updateGhosts();
+     Vel_predict->getV().updateGhosts(); 
+     Vel_predict->getW().updateGhosts();
 
-     cvu.scaleField(TimeStep);
-     cvv.scaleField(TimeStep);
-     cvw.scaleField(TimeStep);
+     Vel_predict_old->getU().updateGhosts();
+     Vel_predict_old->getV().updateGhosts(); 
+     Vel_predict_old->getW().updateGhosts();
+
+     Veln->getU().updateGhosts();
+     Veln->getV().updateGhosts(); 
+     Veln->getW().updateGhosts();    
+
+     Vel_old->getU().updateGhosts();
+     Vel_old->getV().updateGhosts(); 
+     Vel_old->getW().updateGhosts();    
+
+     Pressure->updateGhosts();
+     //Veln -grad p should be divergence free 
+     cout<<"About to compute convective terms!!!+++++------++++++++----------------\n\n\n"<<endl;
+     CFlowVariableSingleBlock *cvu = convectionTerm(*Vel_predict,Veln->getU());
+//     delete cvu;     
+     CFlowVariableSingleBlock *cvv = convectionTerm(*Vel_predict,Veln->getV());
+ //    delete cvv;
+     CFlowVariableSingleBlock *cvw = convectionTerm(*Vel_predict,Veln->getW());
+ //    delete cvw;
+     CFlowVariableSingleBlock *cvu_old = convectionTerm(*Vel_predict_old,Vel_old->getU());
+   //  delete cvu_old;
+     CFlowVariableSingleBlock *cvv_old = convectionTerm(*Vel_predict_old,Vel_old->getV());
+  //   delete cvv_old;
+     CFlowVariableSingleBlock *cvw_old = convectionTerm(*Vel_predict_old,Vel_old->getW());
+  //   delete cvw_old;
+
+
+     cvu->scaleField(1.5*TimeStep);
+     cvv->scaleField(1.5*TimeStep);
+     cvw->scaleField(1.5*TimeStep);
+
+     cvu_old->scaleField(-0.5*TimeStep);
+     cvv_old->scaleField(-0.5*TimeStep);
+     cvw_old->scaleField(-0.5*TimeStep);
+
 
      Veln->getU().computeLaplacian();
-     Veln->getU().getLaplacian().scaleField(TimeStep*Viscosity);
+     Veln->getU().getLaplacian().scaleField(0.5*TimeStep*Viscosity);
 
 
      Veln->getV().computeLaplacian();
-     Veln->getV().getLaplacian().scaleField(TimeStep*Viscosity);
+     Veln->getV().getLaplacian().scaleField(0.5*TimeStep*Viscosity);
     
 
      Veln->getW().computeLaplacian();
-     Veln->getW().getLaplacian().scaleField(TimeStep*Viscosity);
+     Veln->getW().getLaplacian().scaleField(0.5*TimeStep*Viscosity);
 
-     Vel_predict->setVelocity(Veln->getU(),Veln->getV(),Veln->getW());
-     
-     Vel_predict->getU().add(cvu); 
+
+     Vel_old->getU().computeLaplacian();
+     Vel_old->getU().getLaplacian().scaleField(0.5*TimeStep*Viscosity);
+
+
+     Vel_old->getV().computeLaplacian();
+     Vel_old->getV().getLaplacian().scaleField(0.5*TimeStep*Viscosity);
+    
+
+     Vel_old->getW().computeLaplacian();
+     Vel_old->getW().getLaplacian().scaleField(0.5*TimeStep*Viscosity);
+
+     Vel_predict_old->setVelocity(Vel_predict->getU(),Vel_predict->getV(),Vel_predict->getW());
+
+     Vel_predict->getU().add(*cvu); 
      Vel_predict->getU().add(Veln->getU().getLaplacian()); 
 
-     Vel_predict->getV().add(cvv); 
+     Vel_predict->getV().add(*cvv); 
      Vel_predict->getV().add(Veln->getV().getLaplacian()); 
 
-     Vel_predict->getW().add(cvw); 
+     Vel_predict->getW().add(*cvw); 
      Vel_predict->getW().add(Veln->getW().getLaplacian()); 
 
-    
+     Vel_predict->getU().add(*cvu_old); 
+     Vel_predict->getU().add(Vel_old->getU().getLaplacian()); 
+
+     Vel_predict->getV().add(*cvv_old); 
+     Vel_predict->getV().add(Vel_old->getV().getLaplacian()); 
+
+     Vel_predict->getW().add(*cvw_old); 
+     Vel_predict->getW().add(Vel_old->getW().getLaplacian()); 
+
+ //    delete cvu, cvv, cvw, cvu_old,cvv_old,cvw_old;
+     cvu->freeVariables(); cvv->freeVariables(); cvw->freeVariables();
+     cvu_old->freeVariables(); cvv_old->freeVariables(); cvw_old->freeVariables();
+     delete cvu;delete cvv; delete cvw;
+     delete cvu_old ; delete cvv_old; delete cvw_old;
+     
+   
 }
 
 
 
 void CProjectionMomentumSingleBlock::projection()//solve Poisson equation
 {
-
+/*
     Vel_predict->computeDivergence();
     Vel_predict->scaleDivergence(1.0/TimeStep);
    
     PoissonSolver->setRHS(Vel_predict->getDivergence());
     PoissonSolver->pittPack();
    
-    Pressure->assignValues(PoissonSolver);
-    Pressure->computeGradX();
-    Pressure->computeGradY();
-    Pressure->computeGradZ();
+    Pressure->assignValues(PoissonSolver);*/
+
+    PoissonSolver->setRHS(Veln->getU());
+
 }
 
 
 void CProjectionMomentumSingleBlock::correction()//correct velocities based on new pressure
 {
-
+  // all comments temporary for debug purposes 
+   Vel_old->setVelocity(Veln->getU(),Veln->getV(),Veln->getW());
    Veln->setVelocity(Vel_predict->getU(),Vel_predict->getV(),Vel_predict->getW());
 
-   Pressure->getGradX().scaleField(TimeStep);
+   Pressure->computeGradX();
+   Pressure->getGradX().scaleField(-1.0*TimeStep); 
+   Pressure->computeGradY();
+   Pressure->getGradY().scaleField(-1.0*TimeStep); 
+   Pressure->computeGradZ();
+   Pressure->getGradZ().scaleField(-1.0*TimeStep); 
+   
    Veln->getU().add(Pressure->getGradX());
-
-
-   Pressure->getGradY().scaleField(TimeStep);
    Veln->getV().add(Pressure->getGradY());
-
-   Pressure->getGradZ().scaleField(TimeStep);
    Veln->getW().add(Pressure->getGradZ());
   
 }
@@ -7700,18 +8087,20 @@ void CProjectionMomentumSingleBlock::correction()//correct velocities based on n
 
 void CProjectionMomentumSingleBlock::solve(int N)
 {
+  //      predictVelocity();
    for (int i=0;i<N;i++)
    {
-        predictVelocity();
+        predictVelocity(); 
         projection();
         correction();
-       
+ 
    }
 
 }
 
-CFlowVariableSingleBlock& CProjectionMomentumSingleBlock::convectionTerm(CVelocitySingleBlock &cvel, CFlowVariableSingleBlock &sc )//convection part using cell-centered velocity and scalar values
+CFlowVariableSingleBlock* CProjectionMomentumSingleBlock::convectionTerm(CVelocitySingleBlock &cvel, CFlowVariableSingleBlock &sc )//convection part using cell-centered velocity and scalar values
 {
+   //ideally cvel already divergence-free
    CFlowVariableSingleBlock *conv;
    conv=new CFlowVariableSingleBlock(sc.getnx(),sc.getny(),sc.getnz(),sc.getp0());
 
@@ -7725,6 +8114,7 @@ CFlowVariableSingleBlock& CProjectionMomentumSingleBlock::convectionTerm(CVeloci
     if(&(sc.getGradX())==NULL) sc.computeGradX(); 
     if(&(sc.getGradY())==NULL) sc.computeGradY();
     if(&(sc.getGradZ())==NULL) sc.computeGradZ();
+
 
      double *coords= Veln->getU().getCoords();
      double *dxyz =  Veln->getU().getdxyz();
@@ -7789,54 +8179,134 @@ CFlowVariableSingleBlock& CProjectionMomentumSingleBlock::convectionTerm(CVeloci
 
                    tempt = 0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i,j,k+1,0))*
                            0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id,i,j,k+1,0) - TimeStep*(Pressure->getValue(id,i,j,k+1,0) - Pressure->getValue(id,i,j,k,0))  );*/
+                  //scale with 1/dx, 1/dy, 1/dz!
                    if(i>0)
-                   tempw = 
-                           0.5*(cvel.getU().getValue(id,i-1,j,k,0) + cvel.getU().getValue(id,i,j,k,0) - TimeStep/c1*(Pressure->getValue(id,i,j,k,0)-Pressure->getValue(id,i-1,j,k,0))  );
-                   else tempw=tempe;
-                 //   tempw = 0.5*(cvel.getU().WestGhosts[j + nyChunk * k+ id*nyChunk*nzChunk] + cvel.getU().getValue(id,i,j,k,0) 
-                 //             - TimeStep/c1*(Pressure->getValue(id,i,j,k,0)-Pressure->WestGhosts[j + nyChunk * k+ id*nyChunk*nzChunk] )  );                
+                   tempw = 0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i-1,j,k,0))*
+                           (0.5*(cvel.getU().getValue(id,i-1,j,k,0) + cvel.getU().getValue(id,i,j,k,0)) - TimeStep/c1*(Pressure->getValue(id,i,j,k,0)-Pressure->getValue(id,i-1,j,k,0)))  ;
+                   else 
+                    tempw = 0.5*(sc.getValue(id,i,j,k,0) + sc.WestGhosts[j + nyChunk * k+ id*nyChunk*nzChunk])*
+                           ( 0.5*(cvel.getU().WestGhosts[j + nyChunk * k+ id*nyChunk*nzChunk] + cvel.getU().getValue(id,i,j,k,0)) 
+                              - TimeStep/c1*(Pressure->getValue(id,i,j,k,0)-Pressure->WestGhosts[j + nyChunk * k+ id*nyChunk*nzChunk] ))  ;                
 
                    if(i<nxChunk-1)
-                     tempe = 
-                           0.5*(cvel.getU().getValue(id,i+1,j,k,0) + cvel.getU().getValue(id,i,j,k,0) + TimeStep/c1*(Pressure->getValue(id,i+1,j,k,0) - Pressure->getValue(id,i,j,k,0)) );
-                   else tempe=tempw;
-                //     tempe = 
-                 //          0.5*(cvel.getU().EastGhosts[j + nyChunk * k+ id*nyChunk*nzChunk]  + cvel.getU().getValue(id,i,j,k,0) 
-            //              + TimeStep/c1*(Pressure->EastGhosts[j + nyChunk * k+ id*nyChunk*nzChunk]  - Pressure->getValue(id,i,j,k,0)) );                     
+                     tempe = 0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i+1,j,k,0))*
+                          ( 0.5*(cvel.getU().getValue(id,i+1,j,k,0) + cvel.getU().getValue(id,i,j,k,0)) - TimeStep/c1*(Pressure->getValue(id,i+1,j,k,0) - Pressure->getValue(id,i,j,k,0))) ;
+                   else 
+                     tempe = 0.5*(sc.getValue(id,i,j,k,0) + sc.EastGhosts[j + nyChunk * k+ id*nyChunk*nzChunk])*
+                          ( 0.5*(cvel.getU().EastGhosts[j + nyChunk * k+ id*nyChunk*nzChunk]  + cvel.getU().getValue(id,i,j,k,0)) 
+                          - TimeStep/c1*(Pressure->EastGhosts[j + nyChunk * k+ id*nyChunk*nzChunk]  - Pressure->getValue(id,i,j,k,0))) ;                     
+                   
                    if(j>0)
-                   tempn =
-                           0.5*(cvel.getV().getValue(id,i,j-1,k,0) + cvel.getV().getValue(id,i,j,k,0) - TimeStep/c2*(Pressure->getValue(id,i,j,k,0) - Pressure->getValue(id,i,j-1,k,0))  );
-                   else tempn=temps;
-              //     tempn = 0.5*(cvel.getV(). + cvel.getV().getValue(id,i,j,k,0) + TimeStep/c2*(Pressure->getValue(id,i,j,k,0) - Pressure->getValue(id,i,j-1,k,0))  );
+                   tempn = 0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i,j-1,k,0))*
+                           (0.5*(cvel.getV().getValue(id,i,j-1,k,0) + cvel.getV().getValue(id,i,j,k,0) ) - TimeStep/c2*(Pressure->getValue(id,i,j,k,0) - Pressure->getValue(id,i,j-1,k,0))) ;
+                   else 
+                      tempn =    0.5*(sc.getValue(id,i,j,k,0) + sc.NorthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk])*
+                      (0.5*(cvel.getV().NorthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk] + cvel.getV().getValue(id,i,j,k,0))
+                            - TimeStep/c2*( Pressure->getValue(id,i,j,k,0) - Pressure->NorthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk]   ) ) ;
+                
+
 
                    if(j<nyChunk-1)
-                   temps =  
-                           0.5*(cvel.getV().getValue(id,i,j,k,0) + cvel.getV().getValue(id,i,j+1,k,0) + TimeStep*(Pressure->getValue(id,i,j+1,k,0)- Pressure->getValue(id,i,j,k,0))  );
-                   else temps=tempn;
-   
+                   temps =  0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i,j+1,k,0))*
+                           (0.5*(cvel.getV().getValue(id,i,j,k,0) + cvel.getV().getValue(id,i,j+1,k,0)) - TimeStep/c2*(Pressure->getValue(id,i,j+1,k,0)- Pressure->getValue(id,i,j,k,0)))  ;
+                   else 
+                      temps = 0.5*(sc.getValue(id,i,j,k,0) + sc.SouthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk])*
+                          (0.5*(cvel.getV().SouthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk] + cvel.getV().getValue(id,i,j,k,0))
+                            - TimeStep/c2*(Pressure->SouthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk] - Pressure->getValue(id,i,j,k,0)  ))  ;
+
                    if(k>0) 
-                   tempb =  
-                           0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id,i,j,k-1,0) - TimeStep*(Pressure->getValue(id,i,j,k,0)- Pressure->getValue(id,i,j,k-1,0))   );
-                   else tempb=tempt;  
+                   tempb =  0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i,j,k-1,0))*
+                           (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id,i,j,k-1,0)) - TimeStep/c3*(Pressure->getValue(id,i,j,k,0)- Pressure->getValue(id,i,j,k-1,0)))   ;
+                   else if(id==0) 
+                   
+                    tempb =   0.5*(sc.getValue(id,i,j,k,0) + sc.BottomGhosts[i+j*nxChunk])*
+                           (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().BottomGhosts[i+j*nxChunk]) - TimeStep/c3*( Pressure->getValue(id,i,j,k,0) - Pressure->BottomGhosts[i+j*nxChunk]  ) )  ;
+                   else if(id>0)
+                     tempb =   0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id-1,i,j,nzChunk-1,0))*
+                           (0.5*( cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id-1,i,j,nzChunk-1,0) ) - TimeStep/c3*(Pressure->getValue(id,i,j,k,0)-Pressure->getValue(id-1,i,j,nzChunk-1,0)));
 
                    if(k<nzChunk-1)
-                   tempt =
-                           0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id,i,j,k+1,0) + TimeStep*(Pressure->getValue(id,i,j,k+1,0) - Pressure->getValue(id,i,j,k,0))  );
-                   else tempt=tempb;
- 
-                   conv->setValue(temp,id,i,j,k,0); 
+                   tempt =  0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i,j,k+1,0))*
+                           (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id,i,j,k+1,0)) - TimeStep/c3*(Pressure->getValue(id,i,j,k+1,0) - Pressure->getValue(id,i,j,k,0))) ;
+                   else if(id==nChunk-1) 
+                        tempt =  0.5*(sc.getValue(id,i,j,k,0) + sc.TopGhosts[i+j*nxChunk])*
+                       (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().TopGhosts[i+j*nxChunk]) - TimeStep/c3*(Pressure->TopGhosts[i+j*nxChunk] - Pressure->getValue(id,i,j,k,0)) )  ;
 
-                   mflow =  tempe-tempw+temps-tempn+tempt-tempb;
-                   if(i==0||i==nxChunk-1) mflow=0;
-                   if(j==0||j==nyChunk-1) mflow=0;
-                   if(k==0||k==nzChunk-1) mflow=0;
+                   else if(id<nChunk-1)
+                        tempt = 0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id+1,i,j,0,0))*
+                      (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id+1,i,j,0,0)) - TimeStep/c3*(Pressure->getValue(id+1,i,j,0,0)- Pressure->getValue(id,i,j,k,0)))   ;
+
+                
+
+
+                   mflow =  (tempe-tempw)/(c1)+(temps-tempn)/(c2)+(tempt-tempb)/(c3);//scale with 1/dx, 1/dy, 1/dz
+               
+                   conv->setValue(mflow,id,i,j,k,0); 
+                    if(i>0)
+                   tempw = //0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i-1,j,k,0))*
+                           (0.5*(cvel.getU().getValue(id,i-1,j,k,0) + cvel.getU().getValue(id,i,j,k,0)) - TimeStep/c1*(Pressure->getValue(id,i,j,k,0)-Pressure->getValue(id,i-1,j,k,0)))  ;
+                   else 
+                    tempw = //0.5*(sc.getValue(id,i,j,k,0) + sc.WestGhosts[j + nyChunk * k+ id*nyChunk*nzChunk])*
+                           ( 0.5*(cvel.getU().WestGhosts[j + nyChunk * k+ id*nyChunk*nzChunk] + cvel.getU().getValue(id,i,j,k,0)) 
+                              - TimeStep/c1*(Pressure->getValue(id,i,j,k,0)-Pressure->WestGhosts[j + nyChunk * k+ id*nyChunk*nzChunk] ))  ;                
+
+                   if(i<nxChunk-1)
+                     tempe = //0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i+1,j,k,0))*
+                          ( 0.5*(cvel.getU().getValue(id,i+1,j,k,0) + cvel.getU().getValue(id,i,j,k,0)) - TimeStep/c1*(Pressure->getValue(id,i+1,j,k,0) - Pressure->getValue(id,i,j,k,0))) ;
+                   else 
+                     tempe = //0.5*(sc.getValue(id,i,j,k,0) + sc.EastGhosts[j + nyChunk * k+ id*nyChunk*nzChunk])*
+                          ( 0.5*(cvel.getU().EastGhosts[j + nyChunk * k+ id*nyChunk*nzChunk]  + cvel.getU().getValue(id,i,j,k,0)) 
+                          - TimeStep/c1*(Pressure->EastGhosts[j + nyChunk * k+ id*nyChunk*nzChunk]  - Pressure->getValue(id,i,j,k,0))) ;                     
+                   
+                   if(j>0)
+                   tempn = //0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i,j-1,k,0))*
+                           (0.5*(cvel.getV().getValue(id,i,j-1,k,0) + cvel.getV().getValue(id,i,j,k,0) ) - TimeStep/c2*(Pressure->getValue(id,i,j,k,0) - Pressure->getValue(id,i,j-1,k,0))) ;
+                   else 
+                      tempn =   // 0.5*(sc.getValue(id,i,j,k,0) + sc.NorthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk])*
+                      (0.5*(cvel.getV().NorthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk] + cvel.getV().getValue(id,i,j,k,0))
+                            - TimeStep/c2*( Pressure->getValue(id,i,j,k,0) - Pressure->NorthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk]   ) ) ;
+                
+
+
+                   if(j<nyChunk-1)
+                   temps = // 0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i,j+1,k,0))*
+                           (0.5*(cvel.getV().getValue(id,i,j,k,0) + cvel.getV().getValue(id,i,j+1,k,0)) - TimeStep/c2*(Pressure->getValue(id,i,j+1,k,0)- Pressure->getValue(id,i,j,k,0)))  ;
+                   else 
+                      temps =// 0.5*(sc.getValue(id,i,j,k,0) + sc.SouthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk])*
+                          (0.5*(cvel.getV().SouthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk] + cvel.getV().getValue(id,i,j,k,0))
+                            - TimeStep/c2*(Pressure->SouthGhosts[i + nxChunk * k+ id*nxChunk*nzChunk] - Pressure->getValue(id,i,j,k,0)  ))  ;
+
+                   if(k>0) 
+                   tempb =  //0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i,j,k-1,0))*
+                           (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id,i,j,k-1,0)) - TimeStep/c3*(Pressure->getValue(id,i,j,k,0)- Pressure->getValue(id,i,j,k-1,0)))   ;
+                   else if(id==0) 
+                   
+                    tempb =  // 0.5*(sc.getValue(id,i,j,k,0) + sc.BottomGhosts[i+j*nxChunk])*
+                           (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().BottomGhosts[i+j*nxChunk]) - TimeStep/c3*( Pressure->getValue(id,i,j,k,0) - Pressure->BottomGhosts[i+j*nxChunk]  ) )  ;
+                   else if(id>0)
+                     tempb =  // 0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id-1,i,j,nzChunk-1,0))*
+                           (0.5*( cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id-1,i,j,nzChunk-1,0) ) - TimeStep/c3*(Pressure->getValue(id,i,j,k,0)-Pressure->getValue(id-1,i,j,nzChunk-1,0)));
+
+                   if(k<nzChunk-1)
+                   tempt = // 0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id,i,j,k+1,0))*
+                           (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id,i,j,k+1,0)) - TimeStep/c3*(Pressure->getValue(id,i,j,k+1,0) - Pressure->getValue(id,i,j,k,0))) ;
+                   else if(id==nChunk-1) 
+                        tempt = // 0.5*(sc.getValue(id,i,j,k,0) + sc.TopGhosts[i+j*nxChunk])*
+                       (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().TopGhosts[i+j*nxChunk]) - TimeStep/c3*(Pressure->TopGhosts[i+j*nxChunk] - Pressure->getValue(id,i,j,k,0)) )  ;
+
+                   else if(id<nChunk-1)
+                        tempt =// 0.5*(sc.getValue(id,i,j,k,0) + sc.getValue(id+1,i,j,0,0))*
+                      (0.5*(cvel.getW().getValue(id,i,j,k,0) + cvel.getW().getValue(id+1,i,j,0,0)) - TimeStep/c3*(Pressure->getValue(id+1,i,j,0,0)- Pressure->getValue(id,i,j,k,0)))   ;            
+
+                   mflow =  (tempe-tempw)/c1+(temps-tempn)/c2+(tempt-tempb)/c3;
                    Massflow->setValue(mflow,id,i,j,k,0);
+
                 }
 
             }
         }
     }
-
- return  *conv;
+ 
+ return  conv;
 
 }
