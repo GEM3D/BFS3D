@@ -8051,16 +8051,16 @@ void CProjectionMomentumSingleBlock::predictVelocity()
 
 void CProjectionMomentumSingleBlock::projection()//solve Poisson equation
 {
-/*
+
     Vel_predict->computeDivergence();
     Vel_predict->scaleDivergence(1.0/TimeStep);
    
     PoissonSolver->setRHS(Vel_predict->getDivergence());
     PoissonSolver->pittPack();
    
-    Pressure->assignValues(PoissonSolver);*/
+    Pressure->assignValues(PoissonSolver);
 
-    PoissonSolver->setRHS(Veln->getU());
+    //PoissonSolver->setRHS(Veln->getU());
 
 }
 
