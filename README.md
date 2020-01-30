@@ -45,10 +45,10 @@ The executable will be placed in the /bin folder
 ```
 mpirun -np N ./bin/BFS3D nx ny nz Nsteps Stepsize Viscosity
 ```
-  * N: Number of processes (squared number)
-  * nx: Number of elements in X-direction
-  * ny: Number of elements in Y-direction
-  * nz: Number of elements in Z-direction
+  * N: Number of processes (square of integer number, N = n^2)
+  * nx: Number of elements in X-direction on each single processor along x direction (total n\*nx)
+  * ny: Number of elements in Y-direction on each single processor along y direction (total n\*ny)
+  * nz: Number of elements in Z-direction of each chunk (total n\*nz)  
   * Nsteps: Total number of time steps
   * Stepsize: Time step size  
   * Viscosity: Kinematic viscosity of fluid
