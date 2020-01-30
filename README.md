@@ -82,7 +82,8 @@ PittPack
 │   │   signalProc.cpp:    Performs FFT transforms
 │   │   poissonCPU.cpp:    Inherits from class PencilDcmp and specialized for CPU
 │   │   poissonGPU.cpp:    Inherits from class PencilDcmp and specialized for GPU
-│   │   pencilDcmp.cpp:    Incorporates Decomposition strategy and communication patterns, contains flow solver class
+│   │   pencilDcmp.cpp:    Incorporates Decomposition strategy and communication patterns
+|   |   flowSolver.cpp:    Implements class for flow solver 
 │   │   triDiag.cpp:       Class for tridiagonal solvers      
 │   │   phdf5.cpp:         Class for handling IO with hdf5     
 │   │  
@@ -95,6 +96,7 @@ PittPack
 │       │   poissonCPU.hpp
 │       │   poissonGPU.hpp
 │       │   pencilDcmp.hpp
+|       |   flowSolver.hpp
 │       │   triDiag.hpp 
 │       │   phdf5.hpp
 │       │   params.h 
