@@ -30,7 +30,7 @@ BFS3D requires the following libraries
   * HDF5 with Parallel IO
 
 ##  Build  
-PittPack uses *CMakeLists.txt* and *CMakeModules* folder to detect the library paths. <br/>
+BFS3D uses *CMakeLists.txt* and *CMakeModules* folder to detect the library paths. <br/>
 These two components are crucial for complilation of PittPack.
 Perform the following steps
 ```
@@ -43,7 +43,7 @@ The executable will be placed in the /bin folder
 
 ## Run
 ```
-mpirun -np N ./bin/BFS3D nx ny nz Nsteps Stepsize Viscosity
+mpirun -np N ./bin/PittPack nx ny nz Nsteps Stepsize Viscosity
 ```
   * N: Number of processes (squared number)
   * nx: Number of elements in X-direction
@@ -54,14 +54,15 @@ mpirun -np N ./bin/BFS3D nx ny nz Nsteps Stepsize Viscosity
   * Viscosity: Kinematic viscosity of fluid
   
 ## Visualization
-  * The output is written to the /soln folder 
+  * The outputs  are written to the /soln folder
+  * Separate files for three velocity components and presure field
   * Paraview can be used to visualize the solution
   * Simply open the file ending with xdmf in soln/ 
 
 
 ## Directory structure
 ```
-BFS3D
+PittPack
 │   README.md
 │   CMakeLists.txt    
 │   LICENSE
@@ -81,7 +82,7 @@ BFS3D
 │   │   signalProc.cpp:    Performs FFT transforms
 │   │   poissonCPU.cpp:    Inherits from class PencilDcmp and specialized for CPU
 │   │   poissonGPU.cpp:    Inherits from class PencilDcmp and specialized for GPU
-│   │   pencilDcmp.cpp:    Incorporates Decomposition strategy and communication patterns
+│   │   pencilDcmp.cpp:    Incorporates Decomposition strategy and communication patterns, contains flow solver class
 │   │   triDiag.cpp:       Class for tridiagonal solvers      
 │   │   phdf5.cpp:         Class for handling IO with hdf5     
 │   │  
