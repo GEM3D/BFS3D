@@ -31,7 +31,7 @@ BFS3D requires the following libraries
 
 ##  Build  
 BFS3D uses *CMakeLists.txt* and *CMakeModules* folder to detect the library paths. <br/>
-These two components are crucial for complilation of PittPack.
+These two components are crucial for complilation of BFS3D.
 Perform the following steps
 ```
   cd build
@@ -43,7 +43,7 @@ The executable will be placed in the /bin folder
 
 ## Run
 ```
-mpirun -np N ./bin/PittPack nx ny nz Nsteps Stepsize Viscosity
+mpirun -np N ./bin/BFS3D nx ny nz Nsteps Stepsize Viscosity
 ```
   * N: Number of processes (squared number)
   * nx: Number of elements in X-direction
