@@ -1,6 +1,7 @@
 #include "mpi.h"
 #include "params.h"
 #include "pencilDcmp.hpp"
+#include "flowSolver.hpp"
 #include "phdf5.hpp"
 #include <iostream>
 #include <stdio.h>
