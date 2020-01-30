@@ -1,6 +1,6 @@
 # Synopsis
-**BFS3D**(Basic Flow Solver 3D) solves the incompressible Navier-Stokes equations via projection method. It uses the open source direct  solver PittPack to solve the Poisson for pressure field and is suitable for extreme-scale computing with accelerators. <br/>
-The main goal is to solve the system of incompressible Navier-Stokes equations, consisting of the momentum and continuity equations, on a directionally uniform Cartesian grid on CPU or GPU clusters. Second-order explicit time marching is used in the prediction step, and PittPack is called to solve the pressure equation in the projection step. Currently, BFS3D supports the boundary conditions present in the lid-driven cavity problem, i.e. specified velocity or no-slip with Neumann condition for pressure on walls incident to the flow motion, and periodic conditions on walls normal to the spanwise direction.     
+**BFS3D**(Basic Flow Solver 3D) solves the incompressible Navier-Stokes equations via projection method. It uses the direct solver PittPack to solve the Poisson for pressure field and is suitable for extreme-scale computing with accelerators. <br/>
+The main goal is to solve the system of incompressible Navier-Stokes equations, consisting of the momentum and continuity equations, on a directionally uniform Cartesian grid on CPU or GPU clusters. Derived from the base class PencilDcmp of the PittPack project, the flow solver class implements second-order explicit time marching for the prediction step, and calls the pittPack() routine provided in PittPack's PoissonCPU or PoissonGPU class to solve the pressure equation in the projection step. Currently, BFS3D supports the boundary conditions present in the lid-driven cavity problem, i.e. specified velocity or no-slip with Neumann condition for pressure on walls incident to the flow motion, and periodic conditions on walls normal to the spanwise direction.     
 
 ## Features
   * Uses direct Poisson solver PittPack suitable for extreme-scale computing
@@ -15,13 +15,13 @@ BFS3D provides config.sh which can be used to automatically configure the code f
 source config.sh 
 ```
 When prompted respond by entering 0 or 1    
-* (0) : will configure PittPack for CPU clusters 
-* (1) : will configure PittPack for GPU clusters
+* (0) : will configure BFS3D for CPU clusters 
+* (1) : will configure BFS3D for GPU clusters
 
 
 
 ## Installation
-PittPack requires the following libraries
+BFS3D requires the following libraries
   * cmake 
   * MPI 
   * FFTW3
@@ -43,7 +43,7 @@ The executable will be placed in the /bin folder
 
 ## Run
 ```
-mpirun -np N ./bin/PittPack nx ny nz Nsteps Stepsize Viscosity
+mpirun -np N ./bin/BFS3D nx ny nz Nsteps Stepsize Viscosity
 ```
   * N: Number of processes (squared number)
   * nx: Number of elements in X-direction
@@ -61,7 +61,7 @@ mpirun -np N ./bin/PittPack nx ny nz Nsteps Stepsize Viscosity
 
 ## Directory structure
 ```
-PittPack
+BFS3D
 │   README.md
 │   CMakeLists.txt    
 │   LICENSE
